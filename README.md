@@ -12,3 +12,12 @@ This project solves the OOM problem when performing text deduplication on a larg
   - `data_prep.py`: Preprocessing text, Shingling (N-grams).
   - `baseline_lsh.py`: Original MinHashLSH algorithm for comparison.
   - `custom_lshbloom.py`: Optimized LSHBloom algorithm.
+
+## Setup Instructions
+
+Run the following commands to initialize the environment and download the dataset:
+
+```bash
+chmod +x setup.sh
+./setup.sh
+source ~/.bashrc
