@@ -305,8 +305,8 @@ def build_streams_for_grid(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate MinHashLSH on parquet benchmark files.")
-    parser.add_argument("--tuning-parquet", default="data/tuning_docs.parquet")
-    parser.add_argument("--test-parquet", default="data/test_docs.parquet")
+    parser.add_argument("--tuning-parquet", default=r"D:\Project\LSHBloom-Spark-Deduplication\data\tuning_docs.parquet")
+    parser.add_argument("--test-parquet", default=r"D:\Project\LSHBloom-Spark-Deduplication\data\test_docs.parquet")
     parser.add_argument("--output-dir", default="results/minhashlsh_stream_eval")
 
     parser.add_argument("--prevalence-grid", nargs="+", type=float, default=[0.1, 0.5, 0.9])
@@ -336,7 +336,26 @@ def main() -> None:
     print(f"[INFO] Loading tuning parquet: {tuning_path}")
     tuning_docs = validate_doc_df(pd.read_parquet(tuning_path), "tuning_parquet")
     print(f"[INFO] Loading test parquet:   {test_path}")
-    test_docs = validate_doc_df(pd.read_parquet(test_path), "test_parquet")
+    # Load test parquet with chunking to handle large files
+    test_docs_list = []
+    try:
+        import pyarrow.parquet as pq
+        parquet_file = pq.ParquetFile(str(test_path))
+        rows_loaded = 0
+        max_rows = args.test_stream_docs * 10  # Load 10x the needed docs for sampling
+        for batch in parquet_file.iter_batches(batch_size=50000):
+            test_docs_list.append(batch.to_pandas())
+            rows_loaded += len(batch)
+            if rows_loaded >= max_rows:
+                print(f"[INFO] Loaded {rows_loaded:,} rows from test parquet")
+                break
+        test_docs = pd.concat(test_docs_list, ignore_index=True)
+        print(f"[INFO] Loaded total {len(test_docs):,} rows from test parquet")
+    except Exception as e:
+        print(f"[WARNING] Chunked reading failed: {e}, trying direct read...")
+        test_docs = pd.read_parquet(test_path)
+    
+    test_docs = validate_doc_df(test_docs, "test_parquet")
 
     print(f"[INFO] tuning_docs: {len(tuning_docs):,} rows | sources: {tuning_docs['source_doc_id'].nunique():,}")
     print(f"[INFO] test_docs:   {len(test_docs):,} rows | sources: {test_docs['source_doc_id'].nunique():,}")
