@@ -1,7 +1,9 @@
 import os
 import sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../synthetic_benchmark")))
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+CURRENT_DIR = os.path.dirname(__file__)
+sys.path.insert(0, os.path.abspath(os.path.join(CURRENT_DIR, "datasketch")))
+sys.path.insert(0, os.path.abspath(os.path.join(CURRENT_DIR, "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(CURRENT_DIR, "../../synthetic_benchmark")))
 from glob import glob
 import argparse
 from config import *

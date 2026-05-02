@@ -21,7 +21,7 @@ if __name__ == "__main__":
     # FIND PARSER DUPLICATES
     N_per_source = args.N_per_source
     p_src = Path('./')
-    parser_sources = ['html', 'nougat', 'pymupdf', 'tesseract']
+    parser_sources = ['html', 'pypdf', 'pymupdf', 'tesseract']
 
     # choose per parser duplicate sample limits to ensure approximate 50/50 split between parser and truncation duplicates
     m = (N_per_source * len(parser_sources)) # num expected non duplicate documents
