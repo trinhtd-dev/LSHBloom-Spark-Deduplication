@@ -2,8 +2,8 @@ import os
 import sys
 CURRENT_DIR = os.path.dirname(__file__)
 sys.path.insert(0, os.path.abspath(os.path.join(CURRENT_DIR, "datasketch")))
-sys.path.insert(0, os.path.abspath(os.path.join(CURRENT_DIR, "..")))
 sys.path.insert(0, os.path.abspath(os.path.join(CURRENT_DIR, "../../synthetic_benchmark")))
+sys.path.insert(0, os.path.abspath(os.path.join(CURRENT_DIR, "..")))
 import argparse
 from config import *
 from dedup_parsing_harness import DedupHarness
@@ -117,18 +117,13 @@ if __name__ == "__main__":
     os.makedirs(minhash_root, exist_ok=True)
     os.makedirs(result_dir, exist_ok=True)
 
-    import time
-    redis_params =  {
-            "type": "redis",
-            "basename": f"tpc_{benchmark_tag}_{int(time.time())}".encode('utf-8'),
-            "redis": {"host": "localhost", "port": args.redis_port},
-        }
+    storage_config = {"type": "dict"}
 
     deduper = LSHDeduper(
         sim_threshold=float(args.sim_threshold), 
         num_perm=int(args.num_perm), 
         minhash_root=minhash_root,
-        redis_params=redis_params,
+        redis_params=storage_config,
         recompute_minhashes=args.force_compute_minhash,
         ngram=int(args.ngram)
         )
