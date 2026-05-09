@@ -2,3 +2,10 @@ venv310/
 venv/
 .venv/
 env/
+data/
+benchmark_dfs/*.csv
+benchmark_dfs/*.jsonl
+my_benchmark*/
+my_benchmark_new*/
+my_benchmark_p01*/
+synthetic_benchmark/*.jsonl
