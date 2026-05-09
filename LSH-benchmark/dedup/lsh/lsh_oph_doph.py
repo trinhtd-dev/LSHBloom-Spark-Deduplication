@@ -1,10 +1,9 @@
 import argparse
 import hashlib
-import math
 import os
 import pickle
 import sys
-from typing import List, Sequence
+from typing import List
 
 import numpy as np
 
@@ -24,10 +23,10 @@ def get_args():
     parser.add_argument("--num-perm", default=128)
     parser.add_argument("--ngram", type=int, default=1)
     parser.add_argument(
-        "--oph-groups",
+        "--oph-bins",
         type=int,
         default=16,
-        help="Number of OPH groups used to create a sparse one-permutation style sketch.",
+        help="Number of bins used by the one-permutation sketch.",
     )
     parser.add_argument(
         "--force-compute-minhash",
@@ -38,23 +37,26 @@ def get_args():
     return parser.parse_args()
 
 
-class OPHSketch:
-    """OPH/DOPH-style sketch that outputs exactly num_perm values."""
+class OPHDOPHSketch:
+    """Paper-style OPH/DOPH sketch: one permutation, bins, densification."""
 
-    def __init__(self, num_perm: int, groups: int = 16):
-        if groups < 2:
-            raise ValueError("groups must be >= 2")
-        if num_perm < groups:
-            raise ValueError("num_perm must be >= groups")
-        self.num_perm = num_perm
-        self.groups = groups
-        self.per_group = int(math.ceil(num_perm / groups))
+    def __init__(self, num_perm: int, num_bins: int):
+        if num_bins < 2:
+            raise ValueError("num_bins must be >= 2")
+        if num_perm < num_bins:
+            raise ValueError("num_perm must be >= num_bins")
+        self.num_perm = int(num_perm)
+        self.num_bins = int(num_bins)
+        self.bins_per_bucket = int(np.ceil(self.num_perm / self.num_bins))
 
-    def _hash_token(self, token: str) -> int:
+    def _token_hash(self, token: str) -> int:
         digest = hashlib.blake2b(token.encode("utf8"), digest_size=8, person=b"oph-doph")
         return int.from_bytes(digest.digest(), "big", signed=False)
 
-    def compute(self, text: str, ngram: int) -> List[int]:
+    def _one_perm_bin(self, token_hash: int) -> int:
+        return token_hash % self.num_bins
+
+    def compute(self, text: str, ngram: int) -> np.ndarray:
         words = text.split()
         if len(words) < ngram:
             tokens = set(words)
@@ -64,62 +66,66 @@ class OPHSketch:
         if not tokens:
             raise ValueError("Cannot build sketch for empty text")
 
-        buckets: List[List[int]] = [[] for _ in range(self.groups)]
+        bins: List[List[int]] = [[] for _ in range(self.num_bins)]
         for tok in tokens:
-            h = self._hash_token(tok)
-            buckets[h % self.groups].append(h)
+            h = self._token_hash(tok)
+            bins[self._one_perm_bin(h)].append(h)
 
-        signature = []
-        for b in buckets:
-            if b:
-                vals = sorted(b)[: self.per_group]
-                if len(vals) < self.per_group:
-                    vals.extend([None] * (self.per_group - len(vals)))
-            else:
-                vals = [None] * self.per_group
-            signature.extend(vals)
+        signature = np.full(self.num_bins, np.uint64(2**64 - 1), dtype=np.uint64)
+        occupied = np.zeros(self.num_bins, dtype=bool)
+        for i, bucket in enumerate(bins):
+            if bucket:
+                signature[i] = np.uint64(min(bucket))
+                occupied[i] = True
 
-        signature = signature[: self.num_perm]
-        if len(signature) < self.num_perm:
-            signature.extend([None] * (self.num_perm - len(signature)))
-        return self._densify(signature)
+        dense_bins = self._densify(signature, occupied)
+        return self._expand_to_num_perm(dense_bins)
 
-    def _densify(self, signature: Sequence[int]) -> List[int]:
-        dense = list(signature)
-        for i, value in enumerate(dense):
-            if value is not None:
+    def _densify(self, signature: np.ndarray, occupied: np.ndarray) -> np.ndarray:
+        dense = signature.copy()
+        for i in range(self.num_bins):
+            if occupied[i]:
                 continue
-            for step in range(1, len(dense) + 1):
-                j = (i + step) % len(dense)
-                if dense[j] is not None:
-                    dense[i] = self._fill_value(i, dense[j], step)
+            for step in range(1, self.num_bins + 1):
+                j = (i + step) % self.num_bins
+                if occupied[j]:
+                    dense[i] = self._densify_value(i, dense[j], step)
                     break
-            if dense[i] is None:
-                dense[i] = self._fill_value(i, 0, len(dense))
-        return [int(x) for x in dense]
+            if dense[i] == np.uint64(2**64 - 1):
+                dense[i] = self._densify_value(i, np.uint64(0), self.num_bins)
+        return dense
 
-    def _fill_value(self, idx: int, value: int, step: int) -> int:
-        digest = hashlib.blake2b(digest_size=8, person=b"doph-fill")
+    def _expand_to_num_perm(self, dense_bins: np.ndarray) -> np.ndarray:
+        if self.num_perm == self.num_bins:
+            return dense_bins
+        repeats = int(np.ceil(self.num_perm / self.num_bins))
+        expanded = np.tile(dense_bins, repeats)[: self.num_perm]
+        return expanded.astype(np.uint64)
+
+    def _densify_value(self, idx: int, value: np.uint64, step: int) -> np.uint64:
+        digest = hashlib.blake2b(digest_size=8, person=b"oph-doph-dense")
         digest.update(int(idx).to_bytes(4, "little", signed=False))
         digest.update(int(step).to_bytes(4, "little", signed=False))
         digest.update(int(value).to_bytes(8, "little", signed=False))
-        return int.from_bytes(digest.digest(), "big", signed=False)
+        return np.uint64(int.from_bytes(digest.digest(), "big", signed=False))
 
 
 class LSHOphDophDeduper(DedupHarness):
-    def __init__(self, sim_threshold, num_perm, minhash_root, recompute_minhashes=False, ngram=1, oph_groups=16):
+    def __init__(self, sim_threshold, num_perm, minhash_root, recompute_minhashes=False, ngram=1, oph_bins=16):
         super().__init__("lsh_oph_doph")
         self.T = float(sim_threshold)
         self.k = int(num_perm)
         self.minhash_root = minhash_root
         self.force_minhash = recompute_minhashes
         self.ngram = int(ngram)
-        self.oph = OPHSketch(num_perm=self.k, groups=int(oph_groups))
+        self.sketch = OPHDOPHSketch(num_perm=self.k, num_bins=int(oph_bins))
         self.lsh = MinHashLSH(threshold=self.T, num_perm=self.k, storage_config={"type": "dict"})
 
-    def oph_to_minhash(self, signature):
+    def sketch_to_minhash(self, signature: np.ndarray) -> MinHash:
         mh = MinHash(num_perm=self.k)
-        mh.hashvalues = np.array(signature, dtype=np.uint64)
+        if len(signature) != self.k:
+            raise ValueError(f"Sketch length mismatch: expected {self.k}, got {len(signature)}")
+        mh.hashvalues = np.asarray(signature, dtype=np.uint64)
         return mh
 
     def get_minhash(self, text: str, id: int) -> MinHash:
@@ -146,13 +152,11 @@ class LSHOphDophDeduper(DedupHarness):
         return mh
 
     def deduplicate(self, text: str, id: int) -> bool:
-        oph_sig = self.oph.compute(text, self.ngram)
-        mh = self.oph_to_minhash(oph_sig)
-
+        sketch = self.sketch.compute(text, self.ngram)
+        mh = self.sketch_to_minhash(sketch)
         is_dup = bool(self.lsh.query(mh))
         if not is_dup:
             self.lsh.insert(id, mh)
-
         return is_dup
 
 
@@ -175,7 +179,7 @@ if __name__ == "__main__":
         minhash_root=minhash_root,
         recompute_minhashes=args.force_compute_minhash,
         ngram=int(args.ngram),
-        oph_groups=int(args.oph_groups),
+        oph_bins=int(args.oph_bins),
     )
 
     deduper.run(benchmark_jsonl, output_file)

@@ -1,9 +1,9 @@
 import argparse
+import hashlib
 import os
 import pickle
-import random
 import sys
-from typing import Sequence
+from typing import List, Sequence, Tuple
 
 import numpy as np
 
@@ -29,10 +29,10 @@ def get_args():
         help="How many neighboring bucket variants to probe per band.",
     )
     parser.add_argument(
-        "--probe-seed",
+        "--max-probes-per-band",
         type=int,
-        default=42,
-        help="Seed for reproducible multi-probe offsets.",
+        default=8,
+        help="Cap on multi-probe candidates per band.",
     )
     parser.add_argument(
         "--force-compute-minhash",
@@ -44,22 +44,36 @@ def get_args():
 
 
 class MultiProbeLSH(MinHashLSH):
-    """MinHashLSH with a standard multi-probe expansion over band variants."""
+    """Priority multi-probe LSH.
 
-    def __init__(self, *args, probe_radius: int = 2, probe_seed: int = 42, max_probes: int = 10, **kwargs):
+    Probes are ordered by a deterministic score that approximates the idea of
+    visiting higher-collision buckets first.
+    """
+
+    def __init__(self, *args, probe_radius: int = 2, max_probes_per_band: int = 8, **kwargs):
         super().__init__(*args, **kwargs)
         self.probe_radius = int(probe_radius)
-        self.probe_seed = int(probe_seed)
-        self.max_probes = int(max_probes)
+        self.max_probes_per_band = int(max_probes_per_band)
 
-    def _perturb_band(self, band):
-        yield list(band)
-        for i in range(len(band)):
+    def _candidate_variants(self, band: Sequence[int]) -> List[Tuple[int, ...]]:
+        base = tuple(int(v) for v in band)
+        variants = [base]
+        for i in range(len(base)):
             for delta in range(1, self.probe_radius + 1):
                 for sign in (-1, 1):
-                    new_band = list(band)
-                    new_band[i] = (int(new_band[i]) + sign * delta) & ((1 << 64) - 1)
-                    yield new_band
+                    v = list(base)
+                    v[i] = (v[i] + sign * delta) & ((1 << 64) - 1)
+                    variants.append(tuple(v))
+        variants = list(dict.fromkeys(variants))
+        variants.sort(key=self._probe_priority)
+        return variants[: self.max_probes_per_band]
+
+    def _probe_priority(self, variant: Tuple[int, ...]) -> Tuple[int, int]:
+        digest = hashlib.blake2b(digest_size=8, person=b"mp-priority")
+        for v in variant:
+            digest.update(int(v).to_bytes(8, "little", signed=False))
+        score = int.from_bytes(digest.digest(), "big", signed=False)
+        return (score, sum(variant) & ((1 << 64) - 1))
 
     def query(self, minhash) -> list:
         if len(minhash) != self.h:
@@ -68,29 +82,17 @@ class MultiProbeLSH(MinHashLSH):
             )
 
         candidates = set(super().query(minhash))
-        seen = set()
-        probes = 0
-
         for (start, end), hashtable in zip(self.hashranges, self.hashtables):
             band = minhash.hashvalues[start:end]
-            for variant in self._perturb_band(band):
-                key = tuple(int(v) for v in variant)
-                if key in seen:
-                    continue
-                seen.add(key)
-
+            for variant in self._candidate_variants(band):
                 h = self._H(np.asarray(variant, dtype=np.uint64))
                 if h in hashtable:
                     candidates.update(hashtable[h])
-
-                probes += 1
-                if probes >= self.max_probes:
-                    return list(candidates)
         return list(candidates)
 
 
 class LSHMultiProbeDeduper(DedupHarness):
-    def __init__(self, sim_threshold, num_perm, minhash_root, recompute_minhashes=False, ngram=1, probe_radius=2, probe_seed=42):
+    def __init__(self, sim_threshold, num_perm, minhash_root, recompute_minhashes=False, ngram=1, probe_radius=2, max_probes_per_band=8):
         super().__init__("lsh_multiprobe")
         self.T = float(sim_threshold)
         self.k = int(num_perm)
@@ -102,7 +104,7 @@ class LSHMultiProbeDeduper(DedupHarness):
             num_perm=self.k,
             storage_config={"type": "dict"},
             probe_radius=probe_radius,
-            probe_seed=probe_seed,
+            max_probes_per_band=max_probes_per_band,
         )
 
     def get_minhash(self, text: str, id: int) -> MinHash:
@@ -156,7 +158,7 @@ if __name__ == "__main__":
         recompute_minhashes=args.force_compute_minhash,
         ngram=int(args.ngram),
         probe_radius=int(args.probe_radius),
-        probe_seed=int(args.probe_seed),
+        max_probes_per_band=int(args.max_probes_per_band),
     )
 
     deduper.run(benchmark_jsonl, output_file)
