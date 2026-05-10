@@ -60,7 +60,38 @@ ALGORITHMS = [
         "ccnet_results",
         "ccnet",
     ),
+<<<<<<< HEAD
 >>>>>>> 8db5542e13743bc15b6e4dbce8cba9484e46e6b6
+=======
+    (
+        "lsh_bbit",
+        [
+            "dedup/lsh/lsh_bbit.py",
+            "--num-perm",
+            "128",
+            "--ngram",
+            "1",
+            "--b-bit",
+            "1",
+        ],
+        "lsh_bbit_results",
+        "lsh_bbit",
+    ),
+    (
+        "lsh_forest",
+        [
+            "dedup/lsh/lsh_forest.py",
+            "--num-perm",
+            "128",
+            "--ngram",
+            "1",
+            "--num-trees",
+            "8",
+        ],
+        "lsh_forest_results",
+        "lsh_forest",
+    ),
+>>>>>>> b3714118 (update scale method)
 ]
 
 OUTPUT_SUMMARY = BASE_DIR / "psweep_summary.csv"
@@ -146,15 +177,38 @@ def dataset_tag(p: float) -> str:
 
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 def score_file(dataset: str, results_dir: str, algo_prefix: str, threshold: float, num_perm: int) -> Path:
     score_name = f"{algo_prefix}_{threshold:.1f}_{num_perm}_score.csv"
 =======
 def score_file(dataset: str, results_dir: str, algo_prefix: str, threshold: float, num_perm: int | None) -> Path:
+=======
+def score_file(
+    dataset: str,
+    results_dir: str,
+    algo_prefix: str,
+    threshold: float,
+    num_perm: int | None,
+    script_args: list[str],
+) -> Path:
+    suffix = ""
+    if "--b-bit" in script_args:
+        b_bit = int(script_args[script_args.index("--b-bit") + 1])
+        suffix = f"_b{b_bit}"
+    if "--num-trees" in script_args:
+        num_trees = int(script_args[script_args.index("--num-trees") + 1])
+        suffix = f"_l{num_trees}"
+
+>>>>>>> b3714118 (update scale method)
     if num_perm is None:
-        score_name = f"{algo_prefix}_{threshold:.1f}_score.csv"
+        score_name = f"{algo_prefix}_{threshold:.1f}{suffix}_score.csv"
     else:
+<<<<<<< HEAD
         score_name = f"{algo_prefix}_{threshold:.1f}_{num_perm}_score.csv"
 >>>>>>> 8db5542e13743bc15b6e4dbce8cba9484e46e6b6
+=======
+        score_name = f"{algo_prefix}_{threshold:.1f}_{num_perm}{suffix}_score.csv"
+>>>>>>> b3714118 (update scale method)
     return BASE_DIR / dataset / results_dir / score_name
 
 
@@ -195,7 +249,7 @@ def run_task(task: dict[str, object]) -> dict[str, str] | None:
         print(f"[error] {algo_name} failed on {tag} @ {threshold:.1f}")
         return None
 
-    sfile = score_file(tag, results_dir, algo_prefix, threshold, num_perm)
+    sfile = score_file(tag, results_dir, algo_prefix, threshold, num_perm, script_args)
     score = read_score(sfile)
     if not score:
         print(f"[warn] score file missing for {algo_name} on {tag}: {sfile}")
@@ -236,6 +290,18 @@ def plot_summary(
     import numpy as np
     import matplotlib.pyplot as plt
 
+    def line_style(algo_name: str) -> str:
+        if algo_name in {"lsh", "lsh_bloom"}:
+            return "--"
+        return "-"
+
+    def jitter_x(xs: list[float], algo_name: str) -> list[float]:
+        if algo_name == "lsh":
+            return [x - 0.01 for x in xs]
+        if algo_name == "lsh_bloom":
+            return [x + 0.01 for x in xs]
+        return xs
+
     rows = []
     with summary_path.open(newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
@@ -260,7 +326,12 @@ def plot_summary(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+    metrics = [m.strip() for m in plot_metrics.split(",") if m.strip()]
+
+>>>>>>> b3714118 (update scale method)
     if kind == "line_dataset":
         if not plot_dataset:
             print("[warn] plot-dataset not set; skipping plot")
@@ -274,7 +345,6 @@ def plot_summary(
         thresholds = sorted({float(r["threshold"]) for r in rows_ds})
         algos = sorted({r["algorithm"] for r in rows_ds})
 
-        metrics = [m.strip() for m in plot_metrics.split(",") if m.strip()]
         if metrics:
             fig, axes = plt.subplots(1, len(metrics), figsize=(5 * len(metrics), 4), sharey=True)
             if len(metrics) == 1:
@@ -286,13 +356,13 @@ def plot_summary(
                 for idx, algo in enumerate(algos):
                     points = [r for r in rows_ds if r["algorithm"] == algo]
                     points.sort(key=lambda r: float(r["threshold"]))
-                    xs = [float(r["threshold"]) for r in points]
+                    xs = jitter_x([float(r["threshold"]) for r in points], algo)
                     ys = [float(r.get(metric_name, 0) or 0) for r in points]
                     ax.plot(
                         xs,
                         ys,
                         marker=markers[idx % len(markers)],
-                        linestyle="--",
+                        linestyle=line_style(algo),
                         label=algo,
                     )
 
@@ -301,11 +371,41 @@ def plot_summary(
                 ax.grid(True, alpha=0.3)
 
             axes[0].set_ylabel("score")
-            axes[-1].legend(fontsize=8, ncol=2)
+            axes[-1].legend(loc="upper left", fontsize=8, ncol=2, title="algorithm")
             fig.suptitle(f"Metrics vs threshold @ {label_dataset(plot_dataset)}")
             fig.tight_layout()
             fig.savefig(output_path, dpi=150)
             plt.close(fig)
+
+            for metric_name in metrics:
+                if metric_name not in rows_ds[0]:
+                    continue
+                fig, ax = plt.subplots(figsize=(10, 6))
+                for idx, algo in enumerate(algos):
+                    points = [r for r in rows_ds if r["algorithm"] == algo]
+                    points.sort(key=lambda r: float(r["threshold"]))
+                    xs = jitter_x([float(r["threshold"]) for r in points], algo)
+                    ys = [float(r.get(metric_name, 0) or 0) for r in points]
+                    ax.plot(
+                        xs,
+                        ys,
+                        marker=markers[idx % len(markers)],
+                        linestyle=line_style(algo),
+                        label=algo,
+                    )
+
+                ax.set_title(f"{metric_name} vs threshold @ {label_dataset(plot_dataset)}")
+                ax.set_xlabel("threshold")
+                ax.set_ylabel("score")
+                ax.grid(True, alpha=0.3)
+                ax.legend(loc="upper left", fontsize=8, ncol=2, title="algorithm")
+                out = output_path.with_name(
+                    f"{output_path.stem}_{metric_name}{output_path.suffix}"
+                )
+                fig.tight_layout()
+                fig.savefig(out, dpi=150)
+                plt.close(fig)
+
             print(f"Saved plot to {output_path}")
             return
 
@@ -313,15 +413,15 @@ def plot_summary(
         for algo in algos:
             points = [r for r in rows_ds if r["algorithm"] == algo]
             points.sort(key=lambda r: float(r["threshold"]))
-            xs = [float(r["threshold"]) for r in points]
+            xs = jitter_x([float(r["threshold"]) for r in points], algo)
             ys = [float(r.get(metric, 0) or 0) for r in points]
-            ax.plot(xs, ys, marker="o", label=algo)
+            ax.plot(xs, ys, marker="o", linestyle=line_style(algo), label=algo)
 
         ax.set_title(f"{metric} vs threshold @ {label_dataset(plot_dataset)}")
         ax.set_xlabel("threshold")
         ax.set_ylabel(metric)
         ax.grid(True, alpha=0.3)
-        ax.legend(fontsize=8, ncol=2)
+        ax.legend(loc="upper left", fontsize=8, ncol=2, title="algorithm")
         fig.tight_layout()
         fig.savefig(output_path, dpi=150)
         plt.close(fig)
@@ -351,12 +451,12 @@ def plot_summary(
         for algo in algos:
             points = [r for r in rows_at_t if r["algorithm"] == algo]
             points.sort(key=lambda r: dataset_key(r["dataset"]))
-            xs = list(range(len(datasets)))
+            xs = jitter_x(list(range(len(datasets))), algo)
             ys = []
             for ds in datasets:
                 match = next((r for r in points if r["dataset"] == ds), None)
                 ys.append(float(match.get(metric, 0) or 0) if match else 0)
-            ax.plot(xs, ys, marker="o", label=algo)
+            ax.plot(xs, ys, marker="o", linestyle=line_style(algo), label=algo)
 
         ax.set_title(f"{metric} vs dataset @ threshold {target_t:.1f}")
         ax.set_xlabel("dataset")
@@ -364,7 +464,7 @@ def plot_summary(
         ax.set_xticks(range(len(datasets)))
         ax.set_xticklabels(dataset_labels, rotation=25)
         ax.grid(True, alpha=0.3)
-        ax.legend(fontsize=8, ncol=2)
+        ax.legend(loc="upper left", fontsize=8, ncol=2, title="algorithm")
         out = output_path
         fig.tight_layout()
         fig.savefig(out, dpi=150)
@@ -492,21 +592,73 @@ def plot_summary(
     # Line plot
     algos = sorted({r["algorithm"] for r in rows})
     for algo in algos:
-        fig, ax = plt.subplots(figsize=(10, 6))
         algo_rows = [r for r in rows if r["algorithm"] == algo]
         datasets = sorted({r["dataset"] for r in algo_rows})
+
+        if metrics:
+            fig, axes = plt.subplots(1, len(metrics), figsize=(5 * len(metrics), 4), sharey=True)
+            if len(metrics) == 1:
+                axes = [axes]
+            for ax, metric_name in zip(axes, metrics):
+                if metric_name not in algo_rows[0]:
+                    continue
+                for ds in datasets:
+                    points = [r for r in algo_rows if r["dataset"] == ds]
+                    points.sort(key=lambda r: float(r["threshold"]))
+                    xs = jitter_x([float(r["threshold"]) for r in points], algo)
+                    ys = [float(r.get(metric_name, 0) or 0) for r in points]
+                    ax.plot(xs, ys, marker="o", linestyle=line_style(algo), label=label_dataset(ds))
+
+                ax.set_title(metric_name)
+                ax.set_xlabel("threshold")
+                ax.grid(True, alpha=0.3)
+
+            axes[0].set_ylabel("score")
+            axes[-1].legend(loc="upper left", fontsize=8, ncol=2, title="ngưỡng duplicate")
+            fig.suptitle(f"{algo} metrics vs threshold")
+            out = output_path.with_name(f"{output_path.stem}_{algo}{output_path.suffix}")
+            fig.tight_layout()
+            fig.savefig(out, dpi=150)
+            plt.close(fig)
+
+            for metric_name in metrics:
+                if metric_name not in algo_rows[0]:
+                    continue
+                fig, ax = plt.subplots(figsize=(10, 6))
+                for ds in datasets:
+                    points = [r for r in algo_rows if r["dataset"] == ds]
+                    points.sort(key=lambda r: float(r["threshold"]))
+                    xs = jitter_x([float(r["threshold"]) for r in points], algo)
+                    ys = [float(r.get(metric_name, 0) or 0) for r in points]
+                    ax.plot(xs, ys, marker="o", linestyle=line_style(algo), label=label_dataset(ds))
+
+                ax.set_title(f"{algo} {metric_name} vs threshold")
+                ax.set_xlabel("threshold")
+                ax.set_ylabel(metric_name)
+                ax.grid(True, alpha=0.3)
+                ax.legend(loc="upper left", fontsize=8, ncol=2, title="ngưỡng duplicate")
+                out = output_path.with_name(
+                    f"{output_path.stem}_{algo}_{metric_name}{output_path.suffix}"
+                )
+                fig.tight_layout()
+                fig.savefig(out, dpi=150)
+                plt.close(fig)
+
+            continue
+
+        fig, ax = plt.subplots(figsize=(10, 6))
         for ds in datasets:
             points = [r for r in algo_rows if r["dataset"] == ds]
             points.sort(key=lambda r: float(r["threshold"]))
-            xs = [float(r["threshold"]) for r in points]
+            xs = jitter_x([float(r["threshold"]) for r in points], algo)
             ys = [float(r.get(metric, 0) or 0) for r in points]
-            ax.plot(xs, ys, marker="o", label=label_dataset(ds))
+            ax.plot(xs, ys, marker="o", linestyle=line_style(algo), label=label_dataset(ds))
 
         ax.set_title(f"{algo} {metric} vs threshold")
         ax.set_xlabel("threshold")
         ax.set_ylabel(metric)
         ax.grid(True, alpha=0.3)
-        ax.legend(fontsize=8, ncol=2)
+        ax.legend(loc="upper left", fontsize=8, ncol=2, title="ngưỡng duplicate")
         out = output_path.with_name(f"{output_path.stem}_{algo}{output_path.suffix}")
         fig.tight_layout()
         fig.savefig(out, dpi=150)
@@ -539,7 +691,7 @@ def main() -> int:
                         num_perm = int(script_args[script_args.index("--num-perm") + 1])
                     else:
                         num_perm = None
-                    sfile = score_file(tag, results_dir, algo_prefix, threshold, num_perm)
+                    sfile = score_file(tag, results_dir, algo_prefix, threshold, num_perm, script_args)
                     score = read_score(sfile)
                     if not score:
                         continue

@@ -29,3 +29,5 @@ typing_extensions==4.15.0
 tzdata==2025.3
 uniseg==0.10.0
 urllib3==2.6.2
+
+pyarrow datasets

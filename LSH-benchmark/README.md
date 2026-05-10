@@ -4,11 +4,30 @@ This repository contains experiments and benchmarks for reproducing various text
 
 ## Setup
 
+Run all commands from this folder:
+
+```bash
+cd LSH-benchmark
+```
+
 ### Prerequisites
 
 Ensure you have Python 3.10 and Rust installed (for compiling `pyhash-archive`).
 
 ### Setup
+
+Quickstart (clean venv):
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+pip install dedup/cc_net
+pip install dedup/lsh/datasketch
+cd dedup/lsh/pyhash-archive
+pip install .
+cd ../../..
+```
 
 1.  **Install General Dependencies**:
     ```bash
@@ -70,11 +89,22 @@ Scripts for generating and managing the synthetic benchmark dataset used to eval
 1.  **Generate Benchmark Data**:
     Run `synthetic_benchmark/gen_dedup_benchmark.py` to create the dataset (JSONL and CSV ground truth).
 
+    ```bash
+    python synthetic_benchmark/gen_dedup_benchmark.py
+    ```
+
 2.  **Estimate Counts**:
     Run `estimate_para.py` or `estimate_ngram.py` if running DCLM or Dolma to get the expected item counts.
 
+    ```bash
+    python synthetic_benchmark/estimate_para.py
+    python synthetic_benchmark/estimate_ngram.py
+    ```
+
 3.  **Run Deduplication**:
     Execute the specific runner script for the method you want to test. Replace `<benchmark_tag>` with your dataset tag (e.g., `50k`).
+
+    If you ran the generator with defaults, the tag is typically the dataset size (check `synthetic_benchmark/config.py`).
 
     *   **CCNet**:
         ```bash

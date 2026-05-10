@@ -1,24 +1,38 @@
-# Bỏ qua toàn bộ dữ liệu (tránh push nhầm file vài GB lên Git)
+# Ignore generated data to avoid committing large files by accident
 data/*
 !data/.keep
 *.parquet
 *.csv
 *.json
 *.jsonl
+<<<<<<< HEAD
+=======
+*.pkl
+*.tsv
+*.txt
+>>>>>>> b3714118 (update scale method)
 
-# Bỏ qua các file log và thư mục tạm của Apache Spark
+# Benchmark outputs and datasets
+LSH-benchmark/data/
+LSH-benchmark/**/data/
+LSH-benchmark/**/subsets/
+
+LSH-benchmark/**/synthetic_benchmark/
+LSH-benchmark/**/scale_runs/
+
+# Spark temp/runtime files
 derby.log
 metastore_db/
 spark-warehouse/
 logs/
 
-# Bỏ qua môi trường ảo và cache của Python
+# Python
 __pycache__/
 *.py[cod]
 venv/
 .env
 
-# Bỏ qua cấu hình của IDE
+# IDE / notebook
 .vscode/
 .idea/
 .ipynb_checkpoints/
