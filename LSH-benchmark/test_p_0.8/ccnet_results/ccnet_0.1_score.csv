@@ -1,0 +1,2 @@
+name,precision,recall,f1,auc_roc,acc,bal_acc,tp,fp,fn,accmod1,accmod2
+ccnet_0.1,0.8054206085400153,0.984375,0.8859513429897342,0.5165624999999999,0.79725,0.5165625,3150,761,50,nan,nan

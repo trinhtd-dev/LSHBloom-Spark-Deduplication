@@ -2,15 +2,17 @@
 data/*
 !data/.keep
 *.parquet
-*.csv
 *.json
 *.jsonl
+*.pkl
 
 # Bỏ qua các file log và thư mục tạm của Apache Spark
 derby.log
 metastore_db/
 spark-warehouse/
 logs/
+benchmark_dfs/
+my_benchmark*/
 
 # Bỏ qua môi trường ảo và cache của Python
 __pycache__/
