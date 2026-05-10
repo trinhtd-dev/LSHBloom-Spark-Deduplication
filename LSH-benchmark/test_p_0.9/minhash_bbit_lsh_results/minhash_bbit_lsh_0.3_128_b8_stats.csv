@@ -1,0 +1,2 @@
+threshold,num_perm,b_bits,num_bands,rows_per_band,shingle_size,processed_docs,inserted_docs,predicted_duplicates,candidate_pairs,index_bucket_count,index_entry_count,skipped_large_buckets,max_bucket_size,peak_memory_mb,signature_sec,query_sec,insert_sec,runtime_sec,full_signature_bytes,bbit_signature_bytes,estimated_index_bytes,bbit_dtype_bytes,band_payload_bytes
+0.3,128,8,37,3,1,4000,403,3597,179075,12145,14911,0,10000,101.5357,213.665856,1.179901,0.248982,308.10019939998165,412672,51584,1232304,1,3

@@ -1,0 +1,2 @@
+name,precision,recall,f1,auc_roc,acc,bal_acc,tp,fp,fn,accmod1,accmod2
+minhash_bbit_lsh,0.567741935483871,0.22,0.3171171171171171,0.5887705956907477,0.8083923154701719,0.5887705956907477,88,67,312,nan,nan

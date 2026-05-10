@@ -1,0 +1,16 @@
+algorithm,dataset,size,threshold,runtime_sec,peak_tracemalloc_mb
+bbit_lsh,scale_test_p_0.2_n475,475,0.9,19.952109,160.617128
+lsh,scale_test_p_0.2_n475,475,0.9,7.672884,60.015733
+lsh_multiprobe,scale_test_p_0.2_n475,475,0.9,4.360908,66.199162
+bbit_lsh,scale_test_p_0.2_n951,951,0.9,40.616002,257.938218
+lsh,scale_test_p_0.2_n951,951,0.9,4.548436,60.017388
+lsh_multiprobe,scale_test_p_0.2_n951,951,0.9,5.517444,75.821812
+bbit_lsh,scale_test_p_0.2_n1426,1426,0.9,59.903196,351.74227
+lsh,scale_test_p_0.2_n1426,1426,0.9,5.077866,60.249678
+lsh_multiprobe,scale_test_p_0.2_n1426,1426,0.9,6.796407,84.329585
+bbit_lsh,scale_test_p_0.2_n1902,1902,0.9,107.929506,439.205571
+lsh,scale_test_p_0.2_n1902,1902,0.9,5.546495,61.205244
+lsh_multiprobe,scale_test_p_0.2_n1902,1902,0.9,9.466916,94.578799
+bbit_lsh,scale_test_p_0.2_n2378,2378,0.9,146.956815,526.790789
+lsh,scale_test_p_0.2_n2378,2378,0.9,7.107508,64.548246
+lsh_multiprobe,scale_test_p_0.2_n2378,2378,0.9,11.440102,104.030082

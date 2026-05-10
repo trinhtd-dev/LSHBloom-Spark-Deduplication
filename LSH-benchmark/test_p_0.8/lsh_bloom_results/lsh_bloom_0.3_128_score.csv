@@ -1,0 +1,2 @@
+name,precision,recall,f1,auc_roc,acc,bal_acc,tp,fp,fn,accmod1,accmod2
+lsh_bloom,0.8069611780455154,0.941875,0.8692141312184571,0.5203125000000001,0.77325,0.5203125,3014,721,186,nan,nan

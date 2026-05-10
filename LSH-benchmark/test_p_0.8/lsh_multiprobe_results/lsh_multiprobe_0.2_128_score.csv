@@ -1,0 +1,2 @@
+name,precision,recall,f1,auc_roc,acc,bal_acc,tp,fp,fn,accmod1,accmod2
+lsh_multiprobe,0.7999499874968742,0.9996875,0.8887345464647868,0.49984375,0.79975,0.49984375,3199,800,1,nan,nan
