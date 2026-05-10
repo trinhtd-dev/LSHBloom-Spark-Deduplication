@@ -1,8 +1,9 @@
 import argparse
+import hashlib
 import os
 import pickle
 import sys
-from typing import List
+from typing import List, Sequence, Tuple
 
 import numpy as np
 
@@ -22,162 +23,76 @@ def get_args():
     parser.add_argument("--num-perm", default=128)
     parser.add_argument("--ngram", type=int, default=1)
     parser.add_argument(
-        "--num-probes",
+        "--probe-radius",
+        type=int,
+        default=2,
+        help="How many neighboring bucket variants to probe per band.",
+    )
+    parser.add_argument(
+        "--max-probes-per-band",
         type=int,
         default=8,
-        help=(
-            "Number of extra narrow-band LSH tables to probe per query (T in paper). "
-            "Each extra table uses band width = base_width - 1, giving higher recall "
-            "at the cost of more false positives. num_probes=0 = standard LSH."
-        ),
+        help="Cap on multi-probe candidates per band.",
     )
     parser.add_argument(
         "--force-compute-minhash",
         action="store_true",
+        help="Force recomputing minhashes instead of using cached values.",
     )
     parser.add_argument("--input", type=str, required=True)
     return parser.parse_args()
 
 
-# ---------------------------------------------------------------------------
-# Multi-Probe LSH for MinHash / Jaccard similarity
-#
-# Paper: Lv et al., "Multi-Probe LSH", VLDB 2007.
-#
-# The paper's core idea: instead of using many hash tables, probe multiple
-# buckets per table that have high collision probability with the query.
-#
-# Why swap-based probing (original code) doesn't work for MinHash:
-#   Each MinHash slot is an independent random minimum. Swapping slot i
-#   with slot j in a band gives a key that has near-zero probability of
-#   matching any real document — it's essentially a random key. Confirmed
-#   experimentally: zero bands where a swap variant of mh2 == mh1's band.
-#
-# Correct adaptation for MinHash:
-#   The analog of "nearby buckets" in Jaccard/MinHash space is a band
-#   with FEWER hash functions (smaller width). A narrower band has a
-#   higher per-band collision probability R^(w') with w' < w, capturing
-#   near-duplicates that the base bands miss.
-#
-#   We build `num_probes` extra LSH tables using width = base_width - 1
-#   (one fewer hash per band). These extra tables act as the "probe"
-#   buckets — they catch near-duplicates where the base bands fail.
-#
-#   This directly mirrors the paper's spirit: probe more buckets with
-#   higher collision probability, trading some precision for recall.
-#
-# Collision probability analysis (why this works):
-#   Base band width w:   P(match) = R^w          (e.g. R=0.8, w=5 → 0.33)
-#   Probe band width w-1: P(match) = R^(w-1)     (e.g. R=0.8, w-1=4 → 0.41)
-#   So probe bands catch ~24% more true near-duplicates at this similarity.
-#
-# False positive control:
-#   Probe tables use the SAME threshold for candidate verification —
-#   any candidate from a probe table is still verified against the
-#   actual MinHash similarity before being declared a duplicate.
-#   datasketch's MinHashLSH does this internally.
-# ---------------------------------------------------------------------------
+class MultiProbeLSH(MinHashLSH):
+    """Priority multi-probe LSH.
 
-
-class MultiProbeLSH:
-    """
-    Multi-probe LSH for MinHash / Jaccard similarity.
-
-    Maintains one base LSH index (standard MinHashLSH) and `num_probes`
-    extra LSH indices with narrower bands (width = base_width - 1).
-    Query probes all indices and returns the union of candidates.
-
-    Parameters
-    ----------
-    threshold : float
-        Jaccard similarity threshold (same as MinHashLSH).
-    num_perm : int
-        Number of MinHash permutations.
-    num_probes : int
-        Number of extra narrow-band tables to probe (T in paper).
-        0 = standard LSH behavior.
-    storage_config : dict
-        Passed to MinHashLSH (e.g. {"type": "dict"}).
+    Probes are ordered by a deterministic score that approximates the idea of
+    visiting higher-collision buckets first.
     """
 
-    def __init__(
-        self,
-        threshold: float,
-        num_perm: int,
-        num_probes: int = 8,
-        storage_config: dict = None,
-    ):
-        if storage_config is None:
-            storage_config = {"type": "dict"}
+    def __init__(self, *args, probe_radius: int = 2, max_probes_per_band: int = 8, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.probe_radius = int(probe_radius)
+        self.max_probes_per_band = int(max_probes_per_band)
 
-        self.threshold = threshold
-        self.num_perm = num_perm
-        self.num_probes = int(num_probes)
+    def _candidate_variants(self, band: Sequence[int]) -> List[Tuple[int, ...]]:
+        base = tuple(int(v) for v in band)
+        variants = [base]
+        for i in range(len(base)):
+            for delta in range(1, self.probe_radius + 1):
+                for sign in (-1, 1):
+                    v = list(base)
+                    v[i] = (v[i] + sign * delta) & ((1 << 64) - 1)
+                    variants.append(tuple(v))
+        variants = list(dict.fromkeys(variants))
+        variants.sort(key=self._probe_priority)
+        return variants[: self.max_probes_per_band]
 
-        # Base LSH index — standard MinHashLSH.
-        self.base_lsh = MinHashLSH(
-            threshold=threshold,
-            num_perm=num_perm,
-            storage_config=storage_config,
-        )
+    def _probe_priority(self, variant: Tuple[int, ...]) -> Tuple[int, int]:
+        digest = hashlib.blake2b(digest_size=8, person=b"mp-priority")
+        for v in variant:
+            digest.update(int(v).to_bytes(8, "little", signed=False))
+        score = int.from_bytes(digest.digest(), "big", signed=False)
+        return (score, sum(variant) & ((1 << 64) - 1))
 
-        # Derive base band parameters from datasketch's internal structure.
-        # datasketch chooses b bands of width r such that (1/b)^(1/r) ≈ threshold.
-        base_b = len(self.base_lsh.hashranges)
-        base_r = self.base_lsh.hashranges[0][1] - self.base_lsh.hashranges[0][0]
-
-        # Probe tables: use narrower bands (width = base_r - 1) for higher recall.
-        # More bands needed to cover num_perm permutations with narrower width.
-        self._probe_lsh: List[MinHashLSH] = []
-        if self.num_probes > 0 and base_r > 1:
-            probe_r = base_r - 1  # narrower band → higher P(match per band)
-            probe_b = num_perm // probe_r  # more bands to cover all permutations
-            for _ in range(self.num_probes):
-                probe_lsh = MinHashLSH(
-                    threshold=threshold,
-                    num_perm=num_perm,
-                    params=(probe_b, probe_r),  # override datasketch band selection
-                    storage_config={"type": "dict"},
-                )
-                self._probe_lsh.append(probe_lsh)
-        elif base_r <= 1:
-            print(
-                "[WARNING] base band width is already 1; "
-                "cannot create narrower probe bands. num_probes ignored."
+    def query(self, minhash) -> list:
+        if len(minhash) != self.h:
+            raise ValueError(
+                "Expecting minhash with length %d, got %d" % (self.h, len(minhash))
             )
 
-    def insert(self, key, minhash: MinHash):
-        self.base_lsh.insert(key, minhash)
-        for probe_lsh in self._probe_lsh:
-            try:
-                probe_lsh.insert(key, minhash)
-            except Exception:
-                pass  # duplicate key guard
-
-    def query(self, minhash: MinHash) -> list:
-        candidates = set(self.base_lsh.query(minhash))
-        for probe_lsh in self._probe_lsh:
-            candidates.update(probe_lsh.query(minhash))
+        candidates = set(super().query(minhash))
+        for (start, end), hashtable in zip(self.hashranges, self.hashtables):
+            band = minhash.hashvalues[start:end]
+            for variant in self._candidate_variants(band):
+                h = self._H(np.asarray(variant, dtype=np.uint64))
+                if h in hashtable:
+                    candidates.update(hashtable[h])
         return list(candidates)
 
-    def __contains__(self, key) -> bool:
-        return key in self.base_lsh
-
-
-# ---------------------------------------------------------------------------
-# Deduper
-# ---------------------------------------------------------------------------
 
 class LSHMultiProbeDeduper(DedupHarness):
-    def __init__(
-        self,
-        sim_threshold,
-        num_perm,
-        minhash_root,
-        recompute_minhashes=False,
-        ngram=1,
-        num_probes=8,
-    ):
+    def __init__(self, sim_threshold, num_perm, minhash_root, recompute_minhashes=False, ngram=1, probe_radius=2, max_probes_per_band=8):
         super().__init__("lsh_multiprobe")
         self.T = float(sim_threshold)
         self.k = int(num_perm)
@@ -187,8 +102,9 @@ class LSHMultiProbeDeduper(DedupHarness):
         self.lsh = MultiProbeLSH(
             threshold=self.T,
             num_perm=self.k,
-            num_probes=int(num_probes),
             storage_config={"type": "dict"},
+            probe_radius=probe_radius,
+            max_probes_per_band=max_probes_per_band,
         )
 
     def get_minhash(self, text: str, id: int) -> MinHash:
@@ -196,8 +112,8 @@ class LSHMultiProbeDeduper(DedupHarness):
         if not self.force_minhash and os.path.isfile(mh_pkl):
             with open(mh_pkl, "rb") as f:
                 mh = pickle.load(f)
-            assert isinstance(mh, MinHash), f"Failed to parse minhash at: {mh_pkl}"
-            return mh
+            if isinstance(mh, MinHash):
+                return mh
 
         mh = MinHash(num_perm=self.k)
         assert isinstance(text, str), f"Error empty document with id: {id}"
@@ -205,10 +121,7 @@ class LSHMultiProbeDeduper(DedupHarness):
         if len(words) < self.ngram:
             s = set(words)
         else:
-            s = set(
-                " ".join(words[i: i + self.ngram])
-                for i in range(len(words) - self.ngram + 1)
-            )
+            s = set([" ".join(words[i : i + self.ngram]) for i in range(len(words) - self.ngram + 1)])
         assert len(s) > 0, f"Error: empty document with id: {id}"
         for d in s:
             mh.update(d.encode("utf8"))
@@ -219,16 +132,9 @@ class LSHMultiProbeDeduper(DedupHarness):
 
     def deduplicate(self, text: str, id: int) -> bool:
         mh = self.get_minhash(text, id)
-
-        query_result = self.lsh.query(mh)
-        uniq = not len(query_result) or (
-            len(query_result) == 1 and query_result[0] == id
-        )
-        is_dup = not uniq
-
+        is_dup = bool(self.lsh.query(mh))
         if not is_dup:
             self.lsh.insert(id, mh)
-
         return is_dup
 
 
@@ -239,14 +145,8 @@ if __name__ == "__main__":
     benchmark_jsonl = os.path.join(DATA_PATH, f"{benchmark_tag}.jsonl")
     result_dir = os.path.join(WORK_DIR, benchmark_tag, "lsh_multiprobe_results")
     minhash_root = os.path.join(result_dir, "minhashes", f"{args.num_perm}")
-    output_file = os.path.join(
-        result_dir,
-        f"lsh_multiprobe_{args.sim_threshold}_{args.num_perm}_preds.csv",
-    )
-    result_file = os.path.join(
-        result_dir,
-        f"lsh_multiprobe_{args.sim_threshold}_{args.num_perm}_score.csv",
-    )
+    output_file = os.path.join(result_dir, f"lsh_multiprobe_{args.sim_threshold}_{args.num_perm}_preds.csv")
+    result_file = os.path.join(result_dir, f"lsh_multiprobe_{args.sim_threshold}_{args.num_perm}_score.csv")
 
     os.makedirs(minhash_root, exist_ok=True)
     os.makedirs(result_dir, exist_ok=True)
@@ -257,7 +157,8 @@ if __name__ == "__main__":
         minhash_root=minhash_root,
         recompute_minhashes=args.force_compute_minhash,
         ngram=int(args.ngram),
-        num_probes=int(args.num_probes),
+        probe_radius=int(args.probe_radius),
+        max_probes_per_band=int(args.max_probes_per_band),
     )
 
     deduper.run(benchmark_jsonl, output_file)

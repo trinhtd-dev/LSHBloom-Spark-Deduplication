@@ -1,2 +1,0 @@
-name,precision,recall,f1,auc_roc,acc,bal_acc,tp,fp,fn,accmod1,accmod2
-lsh_oph_doph,0.9155021124471888,0.7825,0.8437921222105736,0.5662499999999999,0.73925,0.5662499999999999,2817,260,783,nan,nan
