@@ -1,0 +1,11 @@
+include README.md
+include LICENSE
+include requirements.txt
+include pyproject.toml
+recursive-include spark_lshbloom *.py
+recursive-include examples *.py
+recursive-include benchmarks *.py
+recursive-exclude runs *
+recursive-exclude __pycache__ *
+recursive-exclude *.egg-info *
+global-exclude *.py[cod]
