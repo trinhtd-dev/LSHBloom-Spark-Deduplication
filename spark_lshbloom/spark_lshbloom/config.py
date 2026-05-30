@@ -36,7 +36,10 @@ class LSHBloomConfig:
         if self.shingle_size <= 0:
             raise ValueError("shingle_size must be positive.")
         if self.mode not in {"lshbloom", "minhash_lsh"}:
-            raise ValueError("mode must be 'lshbloom' or 'minhash_lsh'. Aliases: 'bloom', 'bloom_filter', 'banding'.")
+            raise ValueError(
+                "mode must be 'lshbloom' or 'minhash_lsh'. "
+                "Aliases: 'bloom', 'bloom_filter', 'banding'."
+            )
         if self.expected_items <= 0:
             raise ValueError("expected_items must be positive.")
         if self.deduplicate_chunks <= 0:

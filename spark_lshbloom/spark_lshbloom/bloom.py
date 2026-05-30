@@ -4,7 +4,9 @@ import json
 import math
 from pathlib import Path
 
-from .hashing import hash64
+import numpy as np
+
+from .hashing import HASH_BACKEND, hash64
 
 
 class MergeableBloomFilter:
@@ -49,7 +51,9 @@ class MergeableBloomFilter:
     def merge(self, other: "MergeableBloomFilter") -> None:
         if self.num_bits != other.num_bits or self.num_hashes != other.num_hashes:
             raise ValueError("Cannot merge Bloom filters with different shapes.")
-        self.bits = bytearray(a | b for a, b in zip(self.bits, other.bits))
+        a = np.frombuffer(bytes(self.bits), dtype=np.uint8)
+        b = np.frombuffer(bytes(other.bits), dtype=np.uint8)
+        self.bits = bytearray(np.bitwise_or(a, b).tobytes())
 
     def to_bytes(self) -> bytes:
         return bytes(self.bits)
@@ -78,6 +82,7 @@ class MergeableBloomFilter:
             "num_bits": self.num_bits,
             "num_hashes": self.num_hashes,
             "num_bytes": self.num_bytes,
+            "hash_backend": HASH_BACKEND,
         }
 
     def save(self, path: str | Path) -> None:
@@ -90,5 +95,12 @@ class MergeableBloomFilter:
     def load(cls, path: str | Path) -> "MergeableBloomFilter":
         root = Path(path)
         meta = json.loads((root / "bloom.json").read_text(encoding="utf8"))
+        saved_backend = meta.get("hash_backend")
+        if saved_backend is not None and saved_backend != HASH_BACKEND:
+            raise RuntimeError(
+                f"Bloom filter was built with hash backend '{saved_backend}' but the current "
+                f"runtime uses '{HASH_BACKEND}'. Install/uninstall xxhash to match, otherwise "
+                f"all queries will silently miss."
+            )
         payload = (root / "bloom.bin").read_bytes()
         return cls.from_bytes(payload=payload, **{k: meta[k] for k in ("expected_items", "fp_prob", "num_bits", "num_hashes")})

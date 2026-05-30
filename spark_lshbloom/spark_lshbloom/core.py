@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from .bloom import MergeableBloomFilter
@@ -44,6 +45,17 @@ class SparkLSHBloom:
     def mode(self) -> str:
         return self.config.mode
 
+    def per_document_fp(self) -> float:
+        """Approximate per-document false-positive rate.
+
+        A document is flagged as duplicate if ANY of its `num_bands` band-keys
+        hits the Bloom. With per-key FP `p`, the per-doc FP is `1 - (1-p)^b`,
+        which is substantially larger than `p` for the typical b in [16, 64].
+        """
+        p = self.config.fp_prob
+        b = self.config.resolved_num_bands
+        return 1.0 - (1.0 - p) ** b
+
     def _make_empty_bloom(self) -> MergeableBloomFilter:
         return MergeableBloomFilter(
             expected_items=self.config.expected_items * self.config.resolved_num_bands,
@@ -76,74 +88,138 @@ class SparkLSHBloom:
 
         return df.withColumn(output_col, make_band_keys(df[text_col]))
 
-    def _build_partition_bloom(self, rows):
+    def _build_partition_bloom_from_text_rows(self, rows, text_col: str):
+        cfg = self.config
         bloom = self._make_empty_bloom()
-        count = 0
         for row in rows:
-            for key in row.band_keys:
+            try:
+                text = row[text_col]
+            except (KeyError, TypeError, ValueError):
+                text = getattr(row, text_col)
+            keys = band_keys_for_text(
+                text=str(text) if text is not None else "",
+                num_perm=cfg.num_perm,
+                num_bands=cfg.resolved_num_bands,
+                shingle_size=cfg.shingle_size,
+                seed=cfg.seed,
+                max_shingles=cfg.max_shingles,
+            )
+            for key in keys:
                 bloom.add(key)
-                count += 1
-        if count == 0:
-            return iter([])
-        return iter([bloom.to_bytes()])
+        yield bloom.to_bytes()
+
+    @staticmethod
+    def _or_merge_payloads(a: bytes, b: bytes) -> bytes:
+        if not a:
+            return b
+        if not b:
+            return a
+        arr_a = np.frombuffer(a, dtype=np.uint8)
+        arr_b = np.frombuffer(b, dtype=np.uint8)
+        return np.bitwise_or(arr_a, arr_b).tobytes()
 
     def _build_bloom_from_df(self, df, text_col: str) -> MergeableBloomFilter:
-        band_df = self._band_keys_column(df, text_col=text_col).select("band_keys")
-        local_filters = band_df.rdd.mapPartitions(self._build_partition_bloom).collect()
+        text_rdd = df.select(text_col).rdd
+        payload_rdd = text_rdd.mapPartitions(lambda rows: self._build_partition_bloom_from_text_rows(rows, text_col))
+        return self._merge_bloom_payload_rdd(payload_rdd, df.sparkSession)
 
-        global_bloom = self._make_empty_bloom()
-        for payload in local_filters:
-            local = MergeableBloomFilter.from_bytes(
-                payload=payload,
-                expected_items=global_bloom.expected_items,
-                fp_prob=global_bloom.fp_prob,
-                num_bits=global_bloom.num_bits,
-                num_hashes=global_bloom.num_hashes,
+    def _merge_bloom_payload_rdd(self, payload_rdd, spark_session) -> MergeableBloomFilter:
+        is_local = str(spark_session.sparkContext.master).startswith("local")
+
+        if is_local:
+            payloads = payload_rdd.collect()
+            if not payloads:
+                return self._make_empty_bloom()
+            merged_payload = payloads[0]
+            for payload in payloads[1:]:
+                merged_payload = self._or_merge_payloads(merged_payload, payload)
+            template = self._make_empty_bloom()
+            return MergeableBloomFilter.from_bytes(
+                payload=merged_payload,
+                expected_items=template.expected_items,
+                fp_prob=template.fp_prob,
+                num_bits=template.num_bits,
+                num_hashes=template.num_hashes,
             )
-            global_bloom.merge(local)
 
-        return global_bloom
+        # Distributed tree-reduce: executors OR-merge bytes in pairs across log(N)
+        # stages, so the driver never has to collect all partition Blooms at once.
+        # If the RDD is empty (no rows survived filtering), fall back to a fresh
+        # empty Bloom instead of crashing.
+        try:
+            merged_payload = payload_rdd.treeReduce(self._or_merge_payloads, depth=2)
+        except ValueError:
+            return self._make_empty_bloom()
+
+        template = self._make_empty_bloom()
+        return MergeableBloomFilter.from_bytes(
+            payload=merged_payload,
+            expected_items=template.expected_items,
+            fp_prob=template.fp_prob,
+            num_bits=template.num_bits,
+            num_hashes=template.num_hashes,
+        )
+
+    def _band_table(self, df, text_col: str, id_col: str | None):
+        from pyspark.sql import functions as F
+
+        internal_id = id_col or "_spark_lshbloom_id"
+        working = df if id_col else df.withColumn(internal_id, F.monotonically_increasing_id())
+        band_df = self._band_keys_column(working, text_col=text_col)
+        return band_df.select(
+            F.col(internal_id).cast("string").alias("doc_id"),
+            F.posexplode("band_keys").alias("band_id", "band_key"),
+        )
 
     def fit(self, df, text_col: str = "text", id_col: str | None = None) -> "SparkLSHBloom":
         if self.mode != "lshbloom":
             raise ValueError("fit() is only available in mode='lshbloom'. Use deduplicate() for mode='minhash_lsh'.")
 
-        global_bloom = self._build_bloom_from_df(df, text_col=text_col)
-        self.bloom = global_bloom
+        self.bloom = self._build_bloom_from_df(df, text_col=text_col)
         return self
 
-    def transform(self, df, text_col: str = "text", id_col: str | None = None, output_col: str = "is_duplicate"):
+    def transform(
+        self,
+        df,
+        text_col: str = "text",
+        id_col: str | None = None,
+        output_col: str = "is_duplicate",
+    ):
         if self.mode != "lshbloom":
             raise ValueError("transform() is only available in mode='lshbloom'.")
         if self.bloom is None:
             raise ValueError("Bloom filter is not fitted. Call fit() or load() first.")
 
-        from pyspark.sql.functions import pandas_udf
+        from pyspark.sql.functions import pandas_udf, udf
         from pyspark.sql.types import BooleanType
 
         spark = df.sparkSession
         meta = self.bloom.metadata()
+        bloom_kwargs = {k: meta[k] for k in ("expected_items", "fp_prob", "num_bits", "num_hashes")}
         payload = self.bloom.to_bytes()
-        bc_meta = spark.sparkContext.broadcast(meta)
+        bc_meta = spark.sparkContext.broadcast(bloom_kwargs)
         bc_payload = spark.sparkContext.broadcast(payload)
 
         cfg = self.config
 
+        def is_dup(text: str) -> bool:
+            bloom = MergeableBloomFilter.from_bytes(payload=bc_payload.value, **bc_meta.value)
+            keys = band_keys_for_text(
+                text=str(text) if text is not None else "",
+                num_perm=cfg.num_perm,
+                num_bands=cfg.resolved_num_bands,
+                shingle_size=cfg.shingle_size,
+                seed=cfg.seed,
+                max_shingles=cfg.max_shingles,
+            )
+            return any(key in bloom for key in keys)
+
+        if not self.use_pandas_udf:
+            query_bloom_py = udf(is_dup, BooleanType())
+            return df.withColumn(output_col, query_bloom_py(df[text_col]))
+
         @pandas_udf(BooleanType())
         def query_bloom(texts: pd.Series) -> pd.Series:
-            bloom = MergeableBloomFilter.from_bytes(payload=bc_payload.value, **bc_meta.value)
-
-            def is_dup(text: str) -> bool:
-                keys = band_keys_for_text(
-                    text=str(text) if text is not None else "",
-                    num_perm=cfg.num_perm,
-                    num_bands=cfg.resolved_num_bands,
-                    shingle_size=cfg.shingle_size,
-                    seed=cfg.seed,
-                    max_shingles=cfg.max_shingles,
-                )
-                return any(key in bloom for key in keys)
-
             return texts.fillna("").map(is_dup)
 
         return df.withColumn(output_col, query_bloom(df[text_col]))

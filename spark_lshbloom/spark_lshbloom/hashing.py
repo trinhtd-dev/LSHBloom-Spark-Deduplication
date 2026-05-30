@@ -10,6 +10,8 @@ try:
 except ImportError:  # pragma: no cover - optional speed dependency
     xxhash = None
 
+HASH_BACKEND = "xxhash" if xxhash is not None else "blake2b"
+
 MERSENNE_PRIME = (1 << 61) - 1
 MAX_HASH = (1 << 64) - 1
 
