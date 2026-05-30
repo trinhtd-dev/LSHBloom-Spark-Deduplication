@@ -1,2 +1,0 @@
-name,precision,recall,f1,auc_roc,acc,bal_acc,tp,fp,fn,accmod1,accmod2
-lsh_forest,0.8240568954854669,0.8328125,0.8284115635685422,0.56078125,0.724,0.56078125,2665,569,535,nan,nan

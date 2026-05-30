@@ -9,3 +9,13 @@ my_benchmark*/
 my_benchmark_new*/
 my_benchmark_p01*/
 synthetic_benchmark/*.jsonl
+
+# Scale runs and test directories
+scale_runs*/
+scale_test*/
+test_p_*
+text_*
+python
+
+# Benchmark summary output files
+*_summary.csv

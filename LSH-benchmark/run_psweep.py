@@ -10,7 +10,6 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 PYTHON = sys.executable
 
-# Adjust if you only want one algorithm.
 ALGORITHMS = [
     (
         "lsh",
@@ -52,17 +51,12 @@ ALGORITHMS = [
         "lsh_multiprobe_results",
         "lsh_multiprobe",
     ),
-<<<<<<< HEAD
-=======
     (
         "ccnet",
         ["dedup/ccnet/ccnet.py"],
         "ccnet_results",
         "ccnet",
     ),
-<<<<<<< HEAD
->>>>>>> 8db5542e13743bc15b6e4dbce8cba9484e46e6b6
-=======
     (
         "lsh_bbit",
         [
@@ -91,7 +85,24 @@ ALGORITHMS = [
         "lsh_forest_results",
         "lsh_forest",
     ),
->>>>>>> b3714118 (update scale method)
+    (
+        "lsh_xor",
+        ["dedup/lsh/lsh_xor.py", "--num-perm", "128", "--ngram", "1"],
+        "lsh_xor_results",
+        "lsh_xor",
+    ),
+    (
+        "lsh_blocked_bloom",
+        ["dedup/lsh/lsh_blocked_bloom.py", "--num-perm", "128", "--ngram", "1"],
+        "lsh_blocked_bloom_results",
+        "lsh_blocked_bloom",
+    ),
+    (
+        "lsh_blowchoc",
+        ["dedup/lsh/lsh_blowchoc.py", "--num-perm", "128", "--ngram", "1"],
+        "lsh_blowchoc_results",
+        "lsh_blowchoc",
+    ),
 ]
 
 OUTPUT_SUMMARY = BASE_DIR / "psweep_summary.csv"
@@ -103,11 +114,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--plot", action="store_true", help="Generate a plot after running sweep.")
     parser.add_argument(
         "--plot-kind",
-<<<<<<< HEAD
-        choices=["line", "heatmap", "surface3d"],
-=======
         choices=["line", "line_algo", "line_dataset", "heatmap", "surface3d", "bar"],
->>>>>>> 8db5542e13743bc15b6e4dbce8cba9484e46e6b6
         default="line",
         help="Plot type for the sweep summary.",
     )
@@ -122,8 +129,6 @@ def get_args() -> argparse.Namespace:
         help="Comma-separated algorithms to include in plots (e.g., lsh,lsh_bloom).",
     )
     parser.add_argument(
-<<<<<<< HEAD
-=======
         "--plot-threshold",
         type=float,
         default=0.5,
@@ -145,20 +150,16 @@ def get_args() -> argparse.Namespace:
         help="Comma-separated metrics for multi-metric plots (e.g., precision,recall,f1).",
     )
     parser.add_argument(
->>>>>>> 8db5542e13743bc15b6e4dbce8cba9484e46e6b6
         "--plot-only",
         action="store_true",
         help="Plot from existing summary CSV without running sweep.",
     )
     parser.add_argument(
-<<<<<<< HEAD
-=======
         "--collect-only",
         action="store_true",
         help="Collect existing score files into summary CSV without running sweep.",
     )
     parser.add_argument(
->>>>>>> 8db5542e13743bc15b6e4dbce8cba9484e46e6b6
         "--jobs",
         type=int,
         default=1,
@@ -176,13 +177,6 @@ def dataset_tag(p: float) -> str:
     return f"test_p_{p:.1f}"
 
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-def score_file(dataset: str, results_dir: str, algo_prefix: str, threshold: float, num_perm: int) -> Path:
-    score_name = f"{algo_prefix}_{threshold:.1f}_{num_perm}_score.csv"
-=======
-def score_file(dataset: str, results_dir: str, algo_prefix: str, threshold: float, num_perm: int | None) -> Path:
-=======
 def score_file(
     dataset: str,
     results_dir: str,
@@ -199,16 +193,10 @@ def score_file(
         num_trees = int(script_args[script_args.index("--num-trees") + 1])
         suffix = f"_l{num_trees}"
 
->>>>>>> b3714118 (update scale method)
     if num_perm is None:
         score_name = f"{algo_prefix}_{threshold:.1f}{suffix}_score.csv"
     else:
-<<<<<<< HEAD
-        score_name = f"{algo_prefix}_{threshold:.1f}_{num_perm}_score.csv"
->>>>>>> 8db5542e13743bc15b6e4dbce8cba9484e46e6b6
-=======
         score_name = f"{algo_prefix}_{threshold:.1f}_{num_perm}{suffix}_score.csv"
->>>>>>> b3714118 (update scale method)
     return BASE_DIR / dataset / results_dir / score_name
 
 
@@ -235,14 +223,10 @@ def run_task(task: dict[str, object]) -> dict[str, str] | None:
     results_dir = str(task["results_dir"])
     algo_prefix = str(task["algo_prefix"])
 
-<<<<<<< HEAD
-    num_perm = int(script_args[script_args.index("--num-perm") + 1])
-=======
     if "--num-perm" in script_args:
         num_perm = int(script_args[script_args.index("--num-perm") + 1])
     else:
         num_perm = None
->>>>>>> 8db5542e13743bc15b6e4dbce8cba9484e46e6b6
     cmd = [PYTHON, *script_args, "--sim-threshold", f"{threshold:.1f}", "--input", tag]
     rc = run_cmd(cmd)
     if rc != 0:
@@ -272,9 +256,6 @@ def run_task(task: dict[str, object]) -> dict[str, str] | None:
     }
 
 
-<<<<<<< HEAD
-def plot_summary(summary_path: Path, metric: str, kind: str, output_path: Path, algos_filter: set[str] | None) -> None:
-=======
 def plot_summary(
     summary_path: Path,
     metric: str,
@@ -286,7 +267,6 @@ def plot_summary(
     plot_metrics: str,
     plot_annotate: bool,
 ) -> None:
->>>>>>> 8db5542e13743bc15b6e4dbce8cba9484e46e6b6
     import numpy as np
     import matplotlib.pyplot as plt
 
@@ -299,7 +279,7 @@ def plot_summary(
         if algo_name == "lsh":
             return [x - 0.01 for x in xs]
         if algo_name == "lsh_bloom":
-            return [x + 0.01 for x in xs]
+            return [x + 0.0 for x in xs]
         return xs
 
     rows = []
@@ -318,6 +298,30 @@ def plot_summary(
             return f"p={name.replace('test_p_', '')}"
         return name
 
+    def prevalence_percent(name: str) -> str:
+        if name.startswith("test_p_"):
+            try:
+                p_value = float(name.replace("test_p_", ""))
+                return f"{p_value * 100:.0f}%"
+            except ValueError:
+                return ""
+        return ""
+
+    def label_algo(algo_name: str) -> str:
+        algo_map = {
+            "lsh": "LSH",
+            "lsh_bloom": "LSH-BLOOM",
+            "lsh_oph_doph": "LSH-OPH-DOPH",
+            "lsh_multiprobe": "LSH-MULTIPROBE",
+            "ccnet": "CCNET",
+            "lsh_bbit": "LSH-BBIT",
+            "lsh_forest": "LSH-FOREST",
+            "lsh_xor": "LSH-XOR",
+            "lsh_blocked_bloom": "LSH-BLOCKED-BLOOM",
+            "lsh_blowchoc": "LSH-BLOWCHOC",
+        }
+        return algo_map.get(algo_name, algo_name.upper())
+
     metric = metric.strip()
     if metric not in rows[0]:
         print(f"[warn] metric '{metric}' not found in summary; skipping plot")
@@ -325,13 +329,8 @@ def plot_summary(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-=======
     metrics = [m.strip() for m in plot_metrics.split(",") if m.strip()]
 
->>>>>>> b3714118 (update scale method)
     if kind == "line_dataset":
         if not plot_dataset:
             print("[warn] plot-dataset not set; skipping plot")
@@ -363,7 +362,7 @@ def plot_summary(
                         ys,
                         marker=markers[idx % len(markers)],
                         linestyle=line_style(algo),
-                        label=algo,
+                        label=label_algo(algo),
                     )
 
                 ax.set_title(metric_name)
@@ -371,8 +370,8 @@ def plot_summary(
                 ax.grid(True, alpha=0.3)
 
             axes[0].set_ylabel("score")
-            axes[-1].legend(loc="upper left", fontsize=8, ncol=2, title="algorithm")
-            fig.suptitle(f"Metrics vs threshold @ {label_dataset(plot_dataset)}")
+            axes[-1].legend(loc="upper right", fontsize=8, ncol=2, title="algorithm")
+            fig.suptitle(f"Metrics vs threshold (duplicate prevalence {label_dataset(plot_dataset)})")
             fig.tight_layout()
             fig.savefig(output_path, dpi=150)
             plt.close(fig)
@@ -391,14 +390,16 @@ def plot_summary(
                         ys,
                         marker=markers[idx % len(markers)],
                         linestyle=line_style(algo),
-                        label=algo,
+                        label=label_algo(algo),
                     )
 
-                ax.set_title(f"{metric_name} vs threshold @ {label_dataset(plot_dataset)}")
+                ax.set_title(
+                    f"{metric_name} vs threshold (duplicate prevalence {label_dataset(plot_dataset)})"
+                )
                 ax.set_xlabel("threshold")
                 ax.set_ylabel("score")
                 ax.grid(True, alpha=0.3)
-                ax.legend(loc="upper left", fontsize=8, ncol=2, title="algorithm")
+                ax.legend(loc="upper right", fontsize=8, ncol=2, title="algorithm")
                 out = output_path.with_name(
                     f"{output_path.stem}_{metric_name}{output_path.suffix}"
                 )
@@ -415,13 +416,20 @@ def plot_summary(
             points.sort(key=lambda r: float(r["threshold"]))
             xs = jitter_x([float(r["threshold"]) for r in points], algo)
             ys = [float(r.get(metric, 0) or 0) for r in points]
-            ax.plot(xs, ys, marker="o", linestyle=line_style(algo), label=algo)
+            ax.plot(xs, ys, marker="o", linestyle=line_style(algo), label=label_algo(algo))
 
-        ax.set_title(f"{metric} vs threshold @ {label_dataset(plot_dataset)}")
+        if metric.lower() == "f1":
+            ax.set_title(
+                f"F1 Score với ngưỡng trùng lặp của dữ liệu là {prevalence_percent(plot_dataset)}"
+            )
+        else:
+            ax.set_title(
+                f"{metric} vs threshold (duplicate prevalence {label_dataset(plot_dataset)})"
+            )
         ax.set_xlabel("threshold")
         ax.set_ylabel(metric)
         ax.grid(True, alpha=0.3)
-        ax.legend(loc="upper left", fontsize=8, ncol=2, title="algorithm")
+        ax.legend(loc="upper right", fontsize=8, ncol=2, title="algorithm")
         fig.tight_layout()
         fig.savefig(output_path, dpi=150)
         plt.close(fig)
@@ -456,7 +464,7 @@ def plot_summary(
             for ds in datasets:
                 match = next((r for r in points if r["dataset"] == ds), None)
                 ys.append(float(match.get(metric, 0) or 0) if match else 0)
-            ax.plot(xs, ys, marker="o", linestyle=line_style(algo), label=algo)
+            ax.plot(xs, ys, marker="o", linestyle=line_style(algo), label=label_algo(algo))
 
         ax.set_title(f"{metric} vs dataset @ threshold {target_t:.1f}")
         ax.set_xlabel("dataset")
@@ -464,7 +472,7 @@ def plot_summary(
         ax.set_xticks(range(len(datasets)))
         ax.set_xticklabels(dataset_labels, rotation=25)
         ax.grid(True, alpha=0.3)
-        ax.legend(loc="upper left", fontsize=8, ncol=2, title="algorithm")
+        ax.legend(loc="upper right", fontsize=8, ncol=2, title="algorithm")
         out = output_path
         fig.tight_layout()
         fig.savefig(out, dpi=150)
@@ -508,7 +516,6 @@ def plot_summary(
         print(f"Saved plots to {output_path.parent}")
         return
 
->>>>>>> 8db5542e13743bc15b6e4dbce8cba9484e46e6b6
     if kind == "surface3d":
         from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
@@ -571,8 +578,6 @@ def plot_summary(
             ax.set_ylabel("dataset")
             ax.set_xticks(range(len(thresholds)), [f"{t:.1f}" for t in thresholds])
             ax.set_yticks(range(len(datasets)), dataset_labels)
-<<<<<<< HEAD
-=======
             if plot_annotate:
                 for i, _ in enumerate(datasets):
                     for j, _ in enumerate(thresholds):
@@ -580,7 +585,6 @@ def plot_summary(
                         if value is None:
                             continue
                         ax.text(j, i, f"{value:.4f}", ha="center", va="center", fontsize=7)
->>>>>>> 8db5542e13743bc15b6e4dbce8cba9484e46e6b6
             fig.colorbar(im, ax=ax)
             out = output_path.with_name(f"{output_path.stem}_{algo}{output_path.suffix}")
             fig.tight_layout()
@@ -614,7 +618,7 @@ def plot_summary(
                 ax.grid(True, alpha=0.3)
 
             axes[0].set_ylabel("score")
-            axes[-1].legend(loc="upper left", fontsize=8, ncol=2, title="ngưỡng duplicate")
+            axes[-1].legend(loc="upper right", fontsize=8, ncol=2, title="ngưỡng duplicate")
             fig.suptitle(f"{algo} metrics vs threshold")
             out = output_path.with_name(f"{output_path.stem}_{algo}{output_path.suffix}")
             fig.tight_layout()
@@ -636,7 +640,7 @@ def plot_summary(
                 ax.set_xlabel("threshold")
                 ax.set_ylabel(metric_name)
                 ax.grid(True, alpha=0.3)
-                ax.legend(loc="upper left", fontsize=8, ncol=2, title="ngưỡng duplicate")
+                ax.legend(loc="upper right", fontsize=8, ncol=2, title="ngưỡng duplicate")
                 out = output_path.with_name(
                     f"{output_path.stem}_{algo}_{metric_name}{output_path.suffix}"
                 )
@@ -658,7 +662,7 @@ def plot_summary(
         ax.set_xlabel("threshold")
         ax.set_ylabel(metric)
         ax.grid(True, alpha=0.3)
-        ax.legend(loc="upper left", fontsize=8, ncol=2, title="ngưỡng duplicate")
+        ax.legend(loc="upper right", fontsize=8, ncol=2, title="ngưỡng duplicate")
         out = output_path.with_name(f"{output_path.stem}_{algo}{output_path.suffix}")
         fig.tight_layout()
         fig.savefig(out, dpi=150)
@@ -678,8 +682,6 @@ def main() -> int:
             return 1
     else:
         active_algorithms = ALGORITHMS
-<<<<<<< HEAD
-=======
     if args.collect_only:
         rows = []
         thresholds = [i / 10 for i in range(1, 10)]
@@ -721,15 +723,11 @@ def main() -> int:
             return 0
         print("\nNo results collected.")
         return 1
->>>>>>> 8db5542e13743bc15b6e4dbce8cba9484e46e6b6
     if args.plot_only:
         if OUTPUT_SUMMARY.exists():
             algos_filter = {a.strip() for a in args.plot_algos.split(",") if a.strip()}
             if not algos_filter:
                 algos_filter = None
-<<<<<<< HEAD
-            plot_summary(OUTPUT_SUMMARY, args.metric, args.plot_kind, Path(args.plot_out), algos_filter)
-=======
             plot_summary(
                 OUTPUT_SUMMARY,
                 args.metric,
@@ -741,7 +739,6 @@ def main() -> int:
                 args.plot_metrics,
                 args.plot_annotate,
             )
->>>>>>> 8db5542e13743bc15b6e4dbce8cba9484e46e6b6
             return 0
         print(f"[error] summary CSV not found: {OUTPUT_SUMMARY}")
         return 1
@@ -792,9 +789,6 @@ def main() -> int:
             algos_filter = {a.strip() for a in args.plot_algos.split(",") if a.strip()}
             if not algos_filter:
                 algos_filter = None
-<<<<<<< HEAD
-            plot_summary(OUTPUT_SUMMARY, args.metric, args.plot_kind, Path(args.plot_out), algos_filter)
-=======
             plot_summary(
                 OUTPUT_SUMMARY,
                 args.metric,
@@ -806,7 +800,6 @@ def main() -> int:
                 args.plot_metrics,
                 args.plot_annotate,
             )
->>>>>>> 8db5542e13743bc15b6e4dbce8cba9484e46e6b6
     else:
         print("\nNo results collected.")
 

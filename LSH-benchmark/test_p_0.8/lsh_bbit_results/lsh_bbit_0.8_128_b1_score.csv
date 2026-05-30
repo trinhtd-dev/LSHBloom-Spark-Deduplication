@@ -1,2 +1,0 @@
-name,precision,recall,f1,auc_roc,acc,bal_acc,tp,fp,fn,accmod1,accmod2
-lsh_bbit,0.8680227057710501,0.5734375,0.6906285284155063,0.6123437500000001,0.589,0.61234375,1835,279,1365,nan,nan

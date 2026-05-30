@@ -84,7 +84,7 @@ def _optimal_param(threshold, num_perm, false_positive_weight, false_negative_we
     return opt
 
 class LSHBloomDeduper(DedupHarness):
-    def __init__(self, n: int, sim_threshold: float, num_perm: int, minhash_root: str, save_dir: str, recompute_minhashes=False, fp=FP_DEFAULT, ngram: int=1):
+    def __init__(self, n: int, sim_threshold: float, num_perm: int, minhash_root: str, save_dir: str, recompute_minhashes=False, fp=FP_DEFAULT, ngram: int=1, clear_filter_state: bool=False):
         super().__init__("lsh_bloom")
         self.T = sim_threshold
         self.k = num_perm
@@ -94,10 +94,11 @@ class LSHBloomDeduper(DedupHarness):
         self.force_minhash = recompute_minhashes
         self.ngram = ngram
         
-        # clear save_dir if re-running
-        for item in glob(f"{save_dir}/*.bf"):
-            os.remove(item)
-            print(f"Clearing bloom filter: {item}")
+        if clear_filter_state:
+            # clear save_dir only for cold-start speed benchmarks
+            for item in glob(f"{save_dir}/*.bf"):
+                os.remove(item)
+                print(f"Clearing bloom filter: {item}")
 
         # set true effective fp rate 
         p_effective = fp
