@@ -1,58 +1,66 @@
-# Báo Cáo Đánh Giá Kỹ Thuật: Phương Pháp LSH Bloom (Locality Sensitive Hashing with Bloom Filters)
+# Báo Cáo Đánh Giá Kỹ Thuật: Phương Pháp LSH Bloom
 
 ---
 
-## 1. Tổng Quan Phương Pháp
+## 1. Ý Tưởng Cốt Lõi
 
-Phương pháp **LSH Bloom** (được triển khai qua lớp `MinHashLSHBloom` trong thư viện datasketch) là một bước tiến quan trọng trong bài toán khử trùng lặp dữ liệu văn bản quy mô lớn. 
+Phương pháp LSH Bloom ra đời nhằm giải quyết nút thắt cổ chai về dung lượng RAM khi khử trùng lặp dữ liệu (Deduplication) ở quy mô hàng triệu đến hàng tỷ văn bản.
 
-Thay vì sử dụng các cấu trúc bảng băm (Hash Table) truyền thống để lưu trữ danh sách chữ ký MinHash và ID tài liệu, LSH Bloom tích hợp **Bộ lọc xác suất Bloom (Bloom Filter)** làm tầng lưu trữ chỉ mục. Phương pháp này giải quyết trực tiếp bài toán quá tải bộ nhớ RAM khi số lượng tài liệu cần lọc tăng lên hàng triệu hoặc hàng tỷ bản ghi.
-
----
-
-## 2. Nguyên Lý Vận Hành Chi Tiết
-
-Quy trình hoạt động của LSH Bloom dựa trên sự kết hợp giữa kỹ thuật chia nhóm LSH và tính toán xác suất của bộ lọc Bloom:
-
-1.  **Tính chữ ký MinHash:** Mỗi văn bản đầu vào được chuyển đổi thành một danh sách chữ ký số (Signature) gồm $k$ phần tử.
-2.  **Chia Band (Banding):** Chữ ký MinHash được chia thành $b$ bands riêng biệt, mỗi band chứa $r$ hàng ($b \times r = k$).
-3.  **Ánh xạ sang bộ chỉ mục Bloom:** Hệ thống khởi tạo $b$ bộ lọc Bloom độc lập, mỗi bộ lọc đại diện cho một band.
-4.  **Băm và Kiểm tra:** 
-    *   Đối với mỗi band $i$ của tài liệu, hệ thống lấy $r$ giá trị số nguyên, băm chúng lại thành một mã số nhận diện duy nhất.
-    *   Mã số này được truy vấn vào bộ lọc Bloom thứ $i$. Nếu mã băm này tồn tại trong bộ lọc Bloom của **ít nhất một band**, tài liệu lập tức bị đánh dấu là trùng lặp.
-    *   Nếu chưa tồn tại trong tất cả các band, mã băm sẽ được chèn vào các bộ lọc Bloom tương ứng để lưu vết cho các tài liệu tiếp theo.
+*   **Tối ưu hóa không gian lưu trữ:** Trong thuật toán LSH truyền thống, việc lưu trữ các ID tài liệu và chữ ký số vào bảng băm khiến RAM phình to liên tục theo số lượng tài liệu đầu vào. LSH Bloom loại bỏ hoàn toàn các ID này, thay thế toàn bộ tầng chỉ mục bảng băm bằng các **Bộ lọc xác suất Bloom (Bloom Filter)** dạng mảng bit siêu nén.
+*   **Cấp phát tĩnh và cố định RAM:** Bộ nhớ được cấp phát tĩnh ngay khi khởi động dựa trên dung lượng dự kiến và tỷ lệ báo sai (FPR) mong muốn. Việc thêm tài liệu mới chỉ là thao tác chuyển đổi các bit `0` sẵn có thành `1` trên mảng bộ nhớ, giữ RAM luôn ở trạng thái "đứng im cố định" và loại bỏ hoàn toàn rủi ro sập hệ thống vì tràn bộ nhớ (Out-of-Memory).
+*   **Đánh đổi toán học:** Thay vì lưu trữ chính xác, LSH Bloom chấp nhận một tỷ lệ báo sai cực nhỏ (False Positive Rate) có thể kiểm soát được bằng toán học để đổi lấy hiệu quả lưu trữ vượt trội.
 
 ---
 
-## 3. Các Ưu Điểm Nổi Bật
+## 2. Cách Thức Triển Khai (Implementation)
 
-### 3.1. Dung lượng bộ nhớ RAM đứng im cố định (Static Memory Allocation)
-Đây là thế mạnh tuyệt đối của LSH Bloom so với LSH truyền thống. 
-*   **Với LSH truyền thống:** Bộ nhớ phình to tuyến tính theo số lượng tài liệu vì phải lưu trữ các chuỗi ID tài liệu và chữ ký băm.
-*   **Với LSH Bloom:** Bộ nhớ được cấp phát tĩnh ngay từ khi khởi động dựa trên số lượng phần tử dự kiến và tỷ lệ báo sai (FPR) mong muốn. Việc thêm tài liệu mới chỉ là thao tác bật các bit từ `0` thành `1` trên mảng bộ nhớ có sẵn, hoàn toàn không sinh ra ô nhớ mới. RAM giữ nguyên một đường thẳng tắp trong suốt quá trình khử trùng, triệt tiêu nguy cơ sập hệ thống do lỗi tràn bộ nhớ (Out-Of-Memory).
+Hệ thống tích hợp bộ lọc Bloom vào cơ chế chia nhóm (Banding) của Locality Sensitive Hashing:
 
-### 3.2. Không rò rỉ thông tin gốc (Data Privacy)
-Bộ lọc Bloom chỉ lưu trữ trạng thái tồn tại của các mã băm dạng bit, hoàn toàn không lưu trữ ID tài liệu hay nội dung gốc của chữ ký. Điều này đảm bảo tính bảo mật dữ liệu tuyệt đối, đặc biệt hữu ích trong các hệ thống xử lý thông tin nhạy cảm.
-
----
-
-## 4. Điểm Yếu Chí Tử & Nút Thắt Cổ Chai Phần Cứng
-
-Dù tối ưu vượt trội về mặt dung lượng RAM, LSH Bloom truyền thống gặp phải các vấn đề nghiêm trọng về hiệu năng xử lý phần cứng:
-
-### 4.1. Hiện tượng nghẽn bộ đệm CPU (L3 Cache Thrashing)
-*   **Bản chất:** Bộ lọc Bloom của LSH Bloom được phân bổ ngẫu nhiên trên toàn bộ không gian RAM khổng lồ (hàng trăm MB). 
-*   **Nút thắt:** Mỗi lần kiểm tra hoặc chèn một mã băm, CPU phải truy xuất RAM ở $k$ (thường từ 10 đến 20) địa chỉ ngẫu nhiên nằm cách xa nhau.
-*   **Hậu quả:** CPU liên tục bị trượt bộ đệm (**L3 Cache Misses**). Ở quy mô lớn, việc CPU phải dừng lại hàng trăm lần để đợi RAM nạp dữ liệu cho mỗi tài liệu khiến tốc độ xử lý toàn hệ thống bị kéo chậm đi nghiêm trọng.
-
-### 4.2. Lãng phí băng thông bus dữ liệu nội bộ
-Mỗi lần CPU muốn đọc 1 bit ngẫu nhiên từ RAM, phần cứng bắt buộc phải nạp nguyên 1 khối 64-byte (Cache Line) chứa bit đó vào cache. Với LSH Bloom, $k$ bit nằm ở $k$ khối cách xa nhau, nghĩa là CPU nạp rất nhiều khối dữ liệu vào cache nhưng chỉ sử dụng đúng 1 bit duy nhất trong mỗi khối $\rightarrow$ Gây lãng phí cực lớn băng thông bus dữ liệu của hệ thống.
+*   **Phân chia phân băng (Banding):** Chữ ký MinHash của tài liệu (ví dụ gồm 128 số nguyên) được chia thành $b$ bands riêng biệt, mỗi band chứa $r$ hàng. Hệ thống khởi tạo $b$ bộ lọc Bloom độc lập tương ứng với các bands này.
+*   **Tạo mã băm đại diện (Fingerprint):** Với mỗi band của tài liệu, thuật toán băm $r$ giá trị số nguyên trong band đó thành một mã băm đại diện duy nhất (fingerprint).
+*   **Thao tác băm và kiểm tra trên bộ lọc Bloom:**
+    *   *Truy vấn (Query):* Mã băm đại diện được băm tiếp thành $k$ vị trí bit ngẫu nhiên trong bộ lọc Bloom tương ứng. Nếu toàn bộ $k$ bit này đều bằng `1` ở ít nhất một band, tài liệu bị coi là trùng lặp.
+    *   *Chèn (Insert):* Nếu tài liệu được xác định là duy nhất (chưa trùng), hệ thống sẽ bật cả $k$ bit tại các vị trí ngẫu nhiên trên mảng bộ nhớ Bloom của từng band tương ứng lên `1` để lưu vết cho các tài liệu tiếp theo.
 
 ---
 
-## 5. Hướng Cải Tiến: Cầu Nối Đến WA-BBF
+## 3. Kết Quả & Nhận Xét (Evaluation & Remarks)
 
-Chính những điểm yếu chí tử về mặt phần cứng của LSH Bloom đã mở đường cho sự ra đời của **WA-BBF (Word-Aligned Blocked Bloom Filter)**:
+### 3.1. Kết quả chất lượng kiểm thử trên tập `test_p_0.5`
+Thực nghiệm đo lường độ chính xác của thuật toán LSH Bloom trên tập dữ liệu chuẩn `test_p_0.5` (gồm 3,578 tài liệu với tỷ lệ trùng lặp 50%, sử dụng chữ ký MinHash 128 hoán vị) đạt kết quả như sau:
 
-1.  **Gom cụm dữ liệu (Blocked):** WA-BBF sửa lỗi Cache Thrashing bằng cách nhốt toàn bộ bits băm vào chung một khối 64-byte duy nhất (vừa khít 1 Cache Line). CPU chỉ tốn đúng 1 lần đọc RAM cho mỗi truy vấn.
-2.  **Căn lề từ nhớ (Word-Aligned):** WA-BBF sửa lỗi lãng phí bus bằng cách ép toàn bộ bits băm của phần tử vào đúng 1 từ nhớ 8-byte (uint64) trong khối. CPU chỉ thao tác đúng 1 lệnh bitwise trên thanh ghi, tăng tốc xử lý lên **gấp 8 lần** so với LSH Bloom truyền thống trong khi vẫn giữ nguyên đặc tính RAM cố định tuyệt vời.
+| Ngưỡng Jaccard | Độ chính xác (Precision) | Độ bao phủ (Recall) | Chỉ số F1-Score |
+|:---:|:---:|:---:|:---:|
+| 0.1 | 0.5598 | 0.9925 | 0.7158 |
+| 0.3 | 0.5706 | 0.9215 | 0.7048 |
+| **0.5** | **0.6575** | **0.5980** | **0.6263** |
+| 0.7 | 0.6994 | 0.4095 | 0.5166 |
+| 0.9 | 0.6964 | 0.2695 | 0.3886 |
+
+*   *Nhận xét:* Sai số chất lượng (F1-score) của bộ lọc Bloom so với thuật toán LSH gốc lưu RAM đầy đủ là cực kỳ nhỏ (chênh lệch dưới 0.02% tùy ngưỡng), chứng minh độ tin cậy toán học gần như tuyệt đối của bộ lọc xác suất.
+
+---
+
+### 3.2. Hiệu năng mở rộng quy mô (Scale Benchmark) trên tập peS2o
+Thực nghiệm đo lường hiệu năng của LSH Bloom khi mở rộng quy mô dữ liệu chèn từ 200.000 tài liệu lên tới **1.000.000 tài liệu**:
+
+| Quy mô dữ liệu (Số tài liệu) | Tổng thời gian thực thi (giây) | Bộ nhớ RAM đỉnh (Peak RAM) |
+|:---:|:---:|:---:|
+| 200.000 | 223,5 giây | **1,98 GB** |
+| 400.000 | 451,1 giây | **1,99 GB** |
+| 600.000 | 682,7 giây | **1,99 GB** |
+| 800.000 | 913,4 giây | **1,99 GB** |
+| **1.000.000** | **1.148,6 giây (~19,1 phút)** | **1,99 GB (Cố định phẳng tắp)** |
+
+---
+
+### 3.3. Nhận xét đánh giá cốt lõi (So sánh trực tiếp với LSH Truyền thống)
+
+*   **Sự ổn định tuyệt hảo về bộ nhớ (RAM):** 
+    *   *Minhashing LSH:* Tiêu thụ bộ nhớ tăng tuyến tính theo số lượng tài liệu đầu vào (đỉnh điểm lên tới **4.12 GB** khi xử lý 1 triệu văn bản) do phải lưu trữ chính xác danh sách các ID tài liệu và chữ ký số vào cấu trúc bảng băm động (Python dictionary). Điều này dẫn đến nguy cơ tràn bộ nhớ (Out-Of-Memory - OOM) cực lớn khi quy mô dữ liệu tiếp tục mở rộng.
+    *   *LSH Bloom:* Giữ mức tiêu thụ RAM luôn phẳng tắp và cố định hoàn hảo ở mức **1.99 GB** từ tài liệu đầu tiên cho đến tài liệu thứ một triệu. Đây là minh chứng rõ nét cho sức mạnh của cơ chế cấp phát tĩnh: việc chèn thêm dữ liệu chỉ thay đổi trạng thái bit trên mảng NumPy có sẵn mà không cấp phát thêm bất kỳ ô nhớ mới nào, giúp hệ thống an toàn tuyệt đối trước lỗi tràn bộ nhớ (OOM).
+*   **Hiệu năng tốc độ vượt trội nhưng vấp phải nút thắt cổ chai phần cứng (L3 Cache Thrashing):**
+    *   *Minhashing LSH:* Bị giới hạn nặng nề bởi chi phí tính toán phần mềm cao. Việc chèn, tìm kiếm và liên tục tái phân bổ (resize) các bucket trên cấu trúc dictionary của Python mất tới **97.7 phút** để hoàn thành 1 triệu tài liệu.
+    *   *LSH Bloom:* Mang lại tốc độ xử lý nhanh hơn gấp **5 lần** (chỉ mất **19.1 phút** cho 1 triệu tài liệu) bằng cách loại bỏ hoàn toàn các overhead của đối tượng Python và thay thế bằng các phép toán bit nhanh chóng trên mảng NumPy phẳng.
+    *   *Nút thắt cổ chai của LSH Bloom:* Mặc dù vượt trội hơn Minhashing LSH nhờ loại bỏ được overhead cấu trúc dữ liệu phần mềm, điểm yếu lớn nhất của LSH Bloom lại nằm ở tốc độ truy xuất phần cứng vật lý. Do mỗi truy vấn yêu cầu kiểm tra $k$ vị trí bit ngẫu nhiên trên một mảng bit lớn nằm rải rác khắp RAM, CPU liên tục gặp lỗi trượt bộ đệm (L3 Cache Misses). Việc CPU phải dừng lại để đợi RAM nạp dữ liệu hàng trăm lần cho mỗi tài liệu là nguyên nhân chính tạo nên "nút thắt cổ chai" giới hạn thông lượng (throughput) xử lý của thuật toán khi scale lên quy mô lớn hơn nữa.
+
