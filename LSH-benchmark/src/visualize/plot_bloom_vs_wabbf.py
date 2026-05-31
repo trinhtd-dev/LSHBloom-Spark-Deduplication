@@ -27,12 +27,12 @@ def create_plots():
     df = pd.read_csv(results_path)
     
     # Filter algos
-    target_algos = ["lsh_bloom", "lsh_blowchoc", "lsh_blocked_bloom"]
+    target_algos = ["lsh_bloom", "lsh_wabbf", "lsh_blocked_bloom"]
     df_plot = df[df["algo_name"].isin(target_algos)].copy()
     
     label_map = {
         "lsh_bloom": "LSH Bloom (Standard)",
-        "lsh_blowchoc": "LSH BlowChoc (Cache-Optimized)",
+        "lsh_wabbf": "LSH WA-BBF (Word-Aligned)",
         "lsh_blocked_bloom": "LSH Blocked Bloom"
     }
     df_plot["label"] = df_plot["algo_name"].map(label_map)
@@ -41,12 +41,12 @@ def create_plots():
     # Convert doc counts to millions for readable labels (e.g., 0.25M, 1.0M)
     df_plot["n_docs_million"] = df_plot["n_docs"] / 1_000_000.0
     
-    out_dir = Path("visualize/bloom_vs_blowchoc_plots")
+    out_dir = Path("visualize/bloom_vs_wabbf_plots")
     out_dir.mkdir(parents=True, exist_ok=True)
     
     colors = {
         "LSH Bloom (Standard)": "#4A90E2",
-        "LSH BlowChoc (Cache-Optimized)": "#E25A90",
+        "LSH WA-BBF (Word-Aligned)": "#E25A90",
         "LSH Blocked Bloom": "#50E3C2"
     }
     

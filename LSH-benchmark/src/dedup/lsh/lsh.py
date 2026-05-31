@@ -98,12 +98,21 @@ class LSHDeduper(DedupHarness):
 
         # query/insert
         query_result = self.lsh.query(mh)
-        uniq = not len(query_result) or (len(query_result) == 1 and query_result[0] == id)
-        is_dup = not uniq
+        is_dup = False
+        for cand_id in query_result:
+            if cand_id != id:
+                # Tải chữ ký MinHash đã được cache của ứng viên lên từ đĩa
+                cand_mh = self.get_minhash("", cand_id)
+                # Xác thực Jaccard thực tế
+                if mh.jaccard(cand_mh) >= self.T:
+                    is_dup = True
+                    break
+                    
         if not is_dup:
             self.lsh.insert(id, mh)
         
         return is_dup
+
 
 if __name__ == "__main__":
     args = get_args()

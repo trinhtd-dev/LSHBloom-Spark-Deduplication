@@ -24,12 +24,9 @@ TOKEN_RE = re.compile(r"\w+")
 
 LSH_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "dedup" / "lsh"
 sys.path.insert(0, str(LSH_DIR))
-
-from lsh_multiprobe import MultiProbeLSH
-from lsh_oph_doph import OPHOptimalDenseSketch, sketch_to_minhash
-from lsh_xor import LSHXorDeduper
-from lsh_zor import LSHZorDeduper
 from lsh import LSHDeduper
+
+
 
 
 def dir_size_bytes(path: Path) -> int:

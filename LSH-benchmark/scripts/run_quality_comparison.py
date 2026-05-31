@@ -20,13 +20,17 @@ import warnings
 warnings.filterwarnings("ignore")
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-LSH_DIR = os.path.join(CURRENT_DIR, "dedup", "lsh")
-SYNTH_DIR = os.path.join(CURRENT_DIR, "synthetic_benchmark")
-DEDUP_DIR = os.path.join(CURRENT_DIR, "dedup")
+ROOT_DIR = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
+
+LSH_DIR = os.path.join(ROOT_DIR, "src", "dedup", "lsh")
+SYNTH_DIR = os.path.join(ROOT_DIR, "synthetic_benchmark")
+DEDUP_DIR = os.path.join(ROOT_DIR, "src", "dedup")
 
 sys.path.insert(0, LSH_DIR)
+sys.path.insert(0, os.path.join(LSH_DIR, "datasketch")) # Chèn cả datasketch
 sys.path.insert(0, SYNTH_DIR)
 sys.path.insert(0, DEDUP_DIR)
+
 
 import pandas as pd
 from pathlib import Path
@@ -91,12 +95,41 @@ def score_results(name, preds_csv, gt_csv):
 
 # ─── Per-algo runners ─────────────────────────────────────────────────────────
 
+def run_standard_lsh(data_jsonl, gt_csv, result_dir, threshold, num_perm, ngram, fp_rate):
+    """Standard MinHash LSH."""
+    from lsh import LSHDeduper
+    # Sử dụng lsh_results
+    minhash_root = os.path.join(result_dir, "lsh_results", f"minhashes_{num_perm}")
+    preds_csv = os.path.join(result_dir, "lsh_results", f"preds_{threshold}_{num_perm}.csv")
+    score_csv = os.path.join(result_dir, "lsh_results", f"lsh_{threshold:.1f}_{num_perm}_score.csv")
+    os.makedirs(minhash_root, exist_ok=True)
+
+    storage_config = {"type": "dict"}
+    deduper = LSHDeduper(
+        sim_threshold=threshold, num_perm=num_perm,
+        minhash_root=minhash_root, redis_params=storage_config,
+        recompute_minhashes=True, ngram=ngram,
+    )
+    t0 = time.perf_counter()
+    deduper.run(data_jsonl, preds_csv)
+    elapsed = time.perf_counter() - t0
+
+    # Tự động tính và ghi file score.csv riêng lẻ
+    deduper.score(preds_csv, gt_csv, score_csv)
+
+    metrics = score_results("lsh", preds_csv, gt_csv)
+    metrics["wall_sec"] = round(elapsed, 2)
+    return metrics
+
+
 def run_standard_bloom(data_jsonl, gt_csv, result_dir, threshold, num_perm, ngram, fp_rate):
     """Standard Bloom Filter (original lsh_bloom)."""
     from lsh_bloom import LSHBloomDeduper
-    minhash_root = os.path.join(result_dir, "standard_bloom", f"minhashes_{num_perm}")
-    save_dir = os.path.join(result_dir, "standard_bloom", f"filter_{threshold}_{num_perm}")
-    preds_csv = os.path.join(result_dir, "standard_bloom", f"preds_{threshold}_{num_perm}.csv")
+    # Sử dụng lsh_bloom_results
+    minhash_root = os.path.join(result_dir, "lsh_bloom_results", f"minhashes_{num_perm}")
+    save_dir = os.path.join(result_dir, "lsh_bloom_results", f"filter_{threshold}_{num_perm}")
+    preds_csv = os.path.join(result_dir, "lsh_bloom_results", f"preds_{threshold}_{num_perm}.csv")
+    score_csv = os.path.join(result_dir, "lsh_bloom_results", f"lsh_bloom_{threshold:.1f}_{num_perm}_score.csv")
     os.makedirs(minhash_root, exist_ok=True)
     os.makedirs(save_dir, exist_ok=True)
 
@@ -108,6 +141,9 @@ def run_standard_bloom(data_jsonl, gt_csv, result_dir, threshold, num_perm, ngra
     t0 = time.perf_counter()
     deduper.run(data_jsonl, preds_csv)
     elapsed = time.perf_counter() - t0
+
+    # Tự động tính và ghi file score.csv riêng lẻ
+    deduper.score(preds_csv, gt_csv, score_csv)
 
     metrics = score_results("lsh_bloom", preds_csv, gt_csv)
     metrics["wall_sec"] = round(elapsed, 2)
@@ -140,9 +176,11 @@ def run_blocked_bloom(data_jsonl, gt_csv, result_dir, threshold, num_perm, ngram
 def run_blowchoc(data_jsonl, gt_csv, result_dir, threshold, num_perm, ngram, fp_rate):
     """BlowChoc Filter."""
     from lsh_blowchoc import LSHBlowChocDeduper
-    minhash_root = os.path.join(result_dir, "blowchoc", f"minhashes_{num_perm}")
-    save_dir = os.path.join(result_dir, "blowchoc", f"filter_{threshold}_{num_perm}")
-    preds_csv = os.path.join(result_dir, "blowchoc", f"preds_{threshold}_{num_perm}.csv")
+    # Sử dụng lsh_blowchoc_results
+    minhash_root = os.path.join(result_dir, "lsh_blowchoc_results", f"minhashes_{num_perm}")
+    save_dir = os.path.join(result_dir, "lsh_blowchoc_results", f"filter_{threshold}_{num_perm}")
+    preds_csv = os.path.join(result_dir, "lsh_blowchoc_results", f"preds_{threshold}_{num_perm}.csv")
+    score_csv = os.path.join(result_dir, "lsh_blowchoc_results", f"lsh_blowchoc_{threshold:.1f}_{num_perm}_score.csv")
     os.makedirs(minhash_root, exist_ok=True)
     os.makedirs(save_dir, exist_ok=True)
 
@@ -155,9 +193,42 @@ def run_blowchoc(data_jsonl, gt_csv, result_dir, threshold, num_perm, ngram, fp_
     deduper.run(data_jsonl, preds_csv)
     elapsed = time.perf_counter() - t0
 
+    # Tự động tính và ghi file score.csv riêng lẻ
+    deduper.score(preds_csv, gt_csv, score_csv)
+
     metrics = score_results("lsh_blowchoc", preds_csv, gt_csv)
     metrics["wall_sec"] = round(elapsed, 2)
     return metrics
+
+
+def run_blowchoc_choices(data_jsonl, gt_csv, result_dir, threshold, num_perm, ngram, fp_rate, num_choices=2):
+    """BlowChoc Choices Filter."""
+    from lsh_blowchoc_choices import LSHChoicesBlowChocDeduper
+    minhash_root = os.path.join(result_dir, "lsh_blowchoc_choices_results", f"minhashes_{num_perm}")
+    save_dir = os.path.join(result_dir, "lsh_blowchoc_choices_results", f"filter_{threshold}_{num_perm}")
+    preds_csv = os.path.join(result_dir, "lsh_blowchoc_choices_results", f"preds_{threshold}_{num_perm}.csv")
+    score_csv = os.path.join(result_dir, "lsh_blowchoc_choices_results", f"lsh_blowchoc_choices_{threshold:.1f}_{num_perm}_score.csv")
+    os.makedirs(minhash_root, exist_ok=True)
+    os.makedirs(save_dir, exist_ok=True)
+
+    deduper = LSHChoicesBlowChocDeduper(
+        n=DATA_SIZE, sim_threshold=threshold, num_perm=num_perm,
+        minhash_root=minhash_root, save_dir=save_dir,
+        recompute_minhashes=True, fp=fp_rate, ngram=ngram,
+        num_choices=num_choices
+    )
+    t0 = time.perf_counter()
+    deduper.run(data_jsonl, preds_csv)
+    elapsed = time.perf_counter() - t0
+
+    # Tự động tính và ghi file score.csv riêng lẻ
+    deduper.score(preds_csv, gt_csv, score_csv)
+
+    metrics = score_results("lsh_blowchoc_choices", preds_csv, gt_csv)
+    metrics["wall_sec"] = round(elapsed, 2)
+    return metrics
+
+
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
@@ -191,8 +262,10 @@ def main():
                         help="Target false positive rate for Bloom filters")
     parser.add_argument("--algos", default="lsh_bloom,lsh_blocked_bloom,lsh_blowchoc",
                         help="Comma-separated list of algos to run")
-    parser.add_argument("--out-dir", default="quality_results",
+    parser.add_argument("--out-dir", default="outputs/runs",
                         help="Directory to save prediction CSVs and summary")
+    parser.add_argument("--num-choices", type=int, default=2,
+                        help="Number of choices for BlowChoc filter (default 2)")
     args = parser.parse_args()
 
     thresholds = [float(t.strip()) for t in args.thresholds.split(",") if t.strip()]
@@ -214,10 +287,13 @@ def main():
 
     all_rows = []
     runner_map = {
+        "lsh": run_standard_lsh,
         "lsh_bloom": run_standard_bloom,
         "lsh_blocked_bloom": run_blocked_bloom,
         "lsh_blowchoc": run_blowchoc,
+        "lsh_blowchoc_choices": run_blowchoc_choices,
     }
+
 
     for threshold in thresholds:
         for algo in algos:
@@ -228,12 +304,18 @@ def main():
             print(f"  Running: {algo}  threshold={threshold}  num_perm={args.num_perm}")
             print(f"{'='*60}")
             try:
+                kwargs = {
+                    "threshold": threshold,
+                    "num_perm": args.num_perm,
+                    "ngram": args.ngram,
+                    "fp_rate": args.fp_rate,
+                }
+                if algo == "lsh_blowchoc_choices":
+                    kwargs["num_choices"] = args.num_choices
+                    
                 metrics = runner_map[algo](
                     data_jsonl, gt_csv, result_dir,
-                    threshold=threshold,
-                    num_perm=args.num_perm,
-                    ngram=args.ngram,
-                    fp_rate=args.fp_rate,
+                    **kwargs
                 )
                 row = {
                     "algo": algo,

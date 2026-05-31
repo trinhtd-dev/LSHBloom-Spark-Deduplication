@@ -13,99 +13,26 @@ PYTHON = sys.executable
 ALGORITHMS = [
     (
         "lsh",
-        ["dedup/lsh/lsh.py", "--num-perm", "128", "--ngram", "1"],
+        ["src/dedup/lsh/lsh.py", "--num-perm", "128", "--ngram", "1"],
         "lsh_results",
         "lsh",
     ),
     (
         "lsh_bloom",
-        ["dedup/lsh/lsh_bloom.py", "--num-perm", "128", "--ngram", "1"],
+        ["src/dedup/lsh/lsh_bloom.py", "--num-perm", "128", "--ngram", "1"],
         "lsh_bloom_results",
         "lsh_bloom",
     ),
     (
-        "lsh_oph_doph",
-        [
-            "dedup/lsh/lsh_oph_doph.py",
-            "--num-perm",
-            "128",
-            "--oph-bins",
-            "128",
-            "--ngram",
-            "1",
-        ],
-        "lsh_oph_doph_results",
-        "lsh_oph_doph",
-    ),
-    (
-        "lsh_multiprobe",
-        [
-            "dedup/lsh/lsh_multiprobe.py",
-            "--num-perm",
-            "128",
-            "--ngram",
-            "1",
-            "--num-probes",
-            "8",
-        ],
-        "lsh_multiprobe_results",
-        "lsh_multiprobe",
-    ),
-    (
-        "ccnet",
-        ["dedup/ccnet/ccnet.py"],
-        "ccnet_results",
-        "ccnet",
-    ),
-    (
-        "lsh_bbit",
-        [
-            "dedup/lsh/lsh_bbit.py",
-            "--num-perm",
-            "128",
-            "--ngram",
-            "1",
-            "--b-bit",
-            "1",
-        ],
-        "lsh_bbit_results",
-        "lsh_bbit",
-    ),
-    (
-        "lsh_forest",
-        [
-            "dedup/lsh/lsh_forest.py",
-            "--num-perm",
-            "128",
-            "--ngram",
-            "1",
-            "--num-trees",
-            "8",
-        ],
-        "lsh_forest_results",
-        "lsh_forest",
-    ),
-    (
-        "lsh_xor",
-        ["dedup/lsh/lsh_xor.py", "--num-perm", "128", "--ngram", "1"],
-        "lsh_xor_results",
-        "lsh_xor",
-    ),
-    (
-        "lsh_blocked_bloom",
-        ["dedup/lsh/lsh_blocked_bloom.py", "--num-perm", "128", "--ngram", "1"],
-        "lsh_blocked_bloom_results",
-        "lsh_blocked_bloom",
-    ),
-    (
         "lsh_blowchoc",
-        ["dedup/lsh/lsh_blowchoc.py", "--num-perm", "128", "--ngram", "1"],
+        ["src/dedup/lsh/lsh_blowchoc.py", "--num-perm", "128", "--ngram", "1"],
         "lsh_blowchoc_results",
         "lsh_blowchoc",
     ),
 ]
 
 OUTPUT_SUMMARY = BASE_DIR / "psweep_summary.csv"
+
 
 
 def get_args() -> argparse.Namespace:
